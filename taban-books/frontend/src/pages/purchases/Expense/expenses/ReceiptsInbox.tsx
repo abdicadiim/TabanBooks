@@ -79,7 +79,7 @@ export default function ReceiptsInbox() {
         // Mock preview for Excel/XLSX just like the screenshot
         if (ext === 'xlsx' || ext === 'xls' || ext === 'csv' || true) { // Defaulting to the screenshot's green XLSX icon for demo purposes
             return (
-                <div style={{ flex: 1, backgroundColor: "#f8fafc", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", marginTop: "12px", minHeight: "140px", position: "relative" }}>
+                <div style={{ flex: 1, backgroundColor: "#ffffff", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", marginTop: "12px", minHeight: "140px", position: "relative", border: "1px solid #f1f5f9" }}>
                     <div style={{
                         display: "flex",
                         alignItems: "center",
@@ -113,7 +113,7 @@ export default function ReceiptsInbox() {
                                 style={{ padding: "6px 12px", border: "1px solid #d1d5db", borderRadius: "6px", backgroundColor: "#ffffff", color: "#374151", fontSize: "14px", fontWeight: "600", cursor: "pointer" }}
                                 onClick={() => {
                                     const filesToConvert = uploadedFiles.filter(f => selectedFiles.includes(f.id));
-                                    navigate("/expenses/new", { state: { receiptFiles: filesToConvert } });
+                                    navigate("/purchases/expenses/new", { state: { receiptFiles: filesToConvert } });
                                 }}
                             >
                                 Convert to Expense
@@ -173,7 +173,7 @@ export default function ReceiptsInbox() {
                                     height: "100%",
                                     boxSizing: "border-box"
                                 }}
-                                onClick={() => navigate("/expenses")}
+                                onClick={() => navigate("/purchases/expenses")}
                             >
                                 Expenses
                             </button>
@@ -275,9 +275,9 @@ export default function ReceiptsInbox() {
                         style={{
                             width: "250px",
                             height: "280px",
-                            border: "1px solid #f1f5f9",
+                            border: "1px solid #e5e7eb",
                             borderRadius: "12px",
-                            backgroundColor: "#f8fafc", // Very light gray background like in the screenshot
+                            backgroundColor: "#ffffff", // Changed from #f8fafc to #ffffff
                             display: "flex",
                             flexDirection: "column",
                             alignItems: "center",
@@ -434,7 +434,7 @@ export default function ReceiptsInbox() {
                                         }}
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            navigate("/expenses/new", { state: { receiptFiles: [file] } });
+                                            navigate("/purchases/expenses/new", { state: { receiptFiles: [file] } });
                                         }}
                                     >
                                         Convert to Expense

@@ -384,13 +384,13 @@ export default function BrandingPage({ onColorChange }: BrandingPageProps) {
       // Validate file type
       const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp'];
       if (!validTypes.includes(file.type)) {
-        alert('Please select a valid image file (jpg, jpeg, png, gif, bmp)');
+        toast.error('Please select a valid image file (jpg, jpeg, png, gif, bmp)');
         return;
       }
 
       // Validate file size (1MB = 1048576 bytes)
       if (file.size > 1048576) {
-        alert('File size must be less than 1MB');
+        toast.error('File size must be less than 1MB');
         return;
       }
 
@@ -958,4 +958,3 @@ export default function BrandingPage({ onColorChange }: BrandingPageProps) {
     </div>
   );
 }
-

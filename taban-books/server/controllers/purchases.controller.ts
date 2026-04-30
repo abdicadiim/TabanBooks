@@ -20,6 +20,7 @@ import BankTransaction from "../models/BankTransaction.js";
 import Currency from "../models/Currency.js";
 import Organization from "../models/Organization.js";
 import { updateAccountBalances } from "../utils/accounting.js";
+import { syncLinkedBankTransaction } from "../utils/bankTransactionSync.js";
 import { sendEmail } from "../services/email.service.js";
 import mongoose from "mongoose";
 import fs from "fs";
@@ -94,6 +95,175 @@ const deriveBillPaymentStatus = (bill: any, balance: number, settledAmount: numb
     return "partially paid";
   }
   return "open";
+};
+
+const applyVendorCreditToLinkedBill = async (
+  organizationId: string,
+  credit: any,
+  session: mongoose.ClientSession
+): Promise<number> => {
+  const billId = String(credit?.bill || "").trim();
+  const creditId = String(credit?._id || credit?.id || "").trim();
+  const vendorId = String(credit?.vendor || "").trim();
+  const creditStatus = String(credit?.status || "").toLowerCase().trim();
+
+  if (!billId || !creditId || !vendorId) return 0;
+  if (!mongoose.Types.ObjectId.isValid(billId)) return 0;
+  if (creditStatus === "draft" || creditStatus === "cancelled" || creditStatus === "refunded") return 0;
+
+  const bill = await Bill.findOne({
+    _id: billId,
+    organization: organizationId,
+  }).session(session);
+
+  if (!bill) return 0;
+  if (String(bill.vendor || "") !== vendorId) return 0;
+
+  const billStatus = String(bill.status || "").toLowerCase().trim();
+  if (billStatus === "draft" || billStatus === "void" || billStatus === "cancelled") return 0;
+
+  const alreadyApplied = Math.max(0, roundMoney(Number(credit.total || 0) - Number(credit.balance || 0)));
+  const billCurrentCreditsApplied = roundMoney(Number((bill as any).vendorCreditsApplied || 0));
+  const billCurrentPaidAmount = roundMoney(Number((bill as any).paidAmount || 0));
+  const billCurrentBalance = roundMoney(Math.max(0, Number(bill.total || 0) - billCurrentPaidAmount - billCurrentCreditsApplied));
+  const availableCreditBalance = roundMoney(Number(credit.balance || 0));
+  const amountToApply = roundMoney(Math.min(availableCreditBalance, billCurrentBalance));
+
+  if (amountToApply <= 0) {
+    const refreshedCreditBalance = roundMoney(Number(credit.balance || 0));
+    credit.status = refreshedCreditBalance <= 0 ? "closed" : alreadyApplied > 0 ? "applied" : credit.status;
+    await credit.save({ session });
+    return 0;
+  }
+
+  (bill as any).vendorCreditsApplied = roundMoney(billCurrentCreditsApplied + amountToApply);
+  bill.balance = roundMoney(Math.max(0, Number(bill.total || 0) - billCurrentPaidAmount - Number((bill as any).vendorCreditsApplied || 0)));
+  bill.status = deriveBillPaymentStatus(
+    bill,
+    roundMoney(Number(bill.balance || 0)),
+    roundMoney(billCurrentPaidAmount + Number((bill as any).vendorCreditsApplied || 0))
+  ) as any;
+  await bill.save({ session });
+
+  credit.balance = roundMoney(Math.max(0, availableCreditBalance - amountToApply));
+  credit.status = Number(credit.balance || 0) <= 0 ? "closed" : "applied";
+  await credit.save({ session });
+
+  return amountToApply;
+};
+
+const releaseVendorCreditFromLinkedBill = async (
+  organizationId: string,
+  credit: any,
+  session: mongoose.ClientSession
+): Promise<number> => {
+  const billId = String(credit?.bill || "").trim();
+  const vendorId = String(credit?.vendor || "").trim();
+
+  if (!billId || !vendorId) return 0;
+  if (!mongoose.Types.ObjectId.isValid(billId)) return 0;
+
+  const appliedAmount = Math.max(0, roundMoney(Number(credit.total || 0) - Number(credit.balance || 0)));
+  if (appliedAmount <= 0) return 0;
+
+  const bill = await Bill.findOne({
+    _id: billId,
+    organization: organizationId,
+  }).session(session);
+
+  if (!bill) return 0;
+  if (String(bill.vendor || "") !== vendorId) return 0;
+
+  const billCurrentCreditsApplied = roundMoney(Number((bill as any).vendorCreditsApplied || 0));
+  (bill as any).vendorCreditsApplied = roundMoney(Math.max(0, billCurrentCreditsApplied - appliedAmount));
+  const paidAmount = roundMoney(Number((bill as any).paidAmount || 0));
+  bill.balance = roundMoney(Math.max(0, Number(bill.total || 0) - paidAmount - Number((bill as any).vendorCreditsApplied || 0)));
+  bill.status = deriveBillPaymentStatus(
+    bill,
+    roundMoney(Number(bill.balance || 0)),
+    roundMoney(paidAmount + Number((bill as any).vendorCreditsApplied || 0))
+  ) as any;
+  await bill.save({ session });
+
+  return appliedAmount;
+};
+
+const deleteVendorCreditsLinkedToBill = async (
+  organizationId: string,
+  billId: mongoose.Types.ObjectId,
+  session: mongoose.ClientSession
+): Promise<string[]> => {
+  const linkedCredits = await VendorCredit.find({
+    organization: organizationId,
+    bill: billId,
+  }).session(session);
+
+  const deletedCreditIds: string[] = [];
+
+  for (const credit of linkedCredits) {
+    const stockDelta = buildVendorCreditStockDelta(
+      (credit as any).items || [],
+      (credit as any).status,
+      [],
+      "draft"
+    );
+
+    await applyVendorCreditStockDelta(organizationId, stockDelta, session);
+    await releaseVendorCreditFromLinkedBill(organizationId, credit, session);
+
+    await VendorCredit.deleteOne({
+      _id: credit._id,
+      organization: organizationId,
+    }).session(session);
+
+    deletedCreditIds.push(String(credit._id));
+  }
+
+  return deletedCreditIds;
+};
+
+const deletePaymentsLinkedToBill = async (
+  organizationId: string,
+  billId: mongoose.Types.ObjectId,
+  session: mongoose.ClientSession
+): Promise<string[]> => {
+  const linkedPayments = await PaymentMade.find({
+    organization: organizationId,
+    "allocations.bill": billId,
+  }).session(session);
+
+  const deletedPaymentIds: string[] = [];
+
+  for (const payment of linkedPayments) {
+    const journals = await JournalEntry.find({
+      organization: organizationId,
+      sourceId: payment._id,
+      sourceType: "payment_made",
+    }).session(session);
+
+    for (const entry of journals) {
+      try {
+        await updateAccountBalances(entry.lines, organizationId, true);
+      } catch (err) {
+        console.error("[BILLS] Failed to reverse linked payment journal balances:", err);
+      }
+    }
+
+    await JournalEntry.deleteMany({
+      organization: organizationId,
+      sourceId: payment._id,
+      sourceType: "payment_made",
+    }).session(session);
+
+    await PaymentMade.deleteOne({
+      _id: payment._id,
+      organization: organizationId,
+    }).session(session);
+
+    deletedPaymentIds.push(String(payment._id));
+  }
+
+  return deletedPaymentIds;
 };
 
 const hydrateBillBalancesAndStatuses = async (organizationId: string, bills: any[]) => {
@@ -1755,13 +1925,25 @@ const applyVendorCreditStockDelta = async (
   const settings = await getItemsSettings(String(organizationId));
   if (!settings.enableInventoryTracking) return;
 
-  for (const [itemId, delta] of stockDelta.entries()) {
-    if (!delta || !mongoose.Types.ObjectId.isValid(itemId)) continue;
+  const validEntries = Array.from(stockDelta.entries()).filter(
+    ([itemId, delta]) => !!delta && mongoose.Types.ObjectId.isValid(itemId)
+  );
+  if (!validEntries.length) return;
 
-    const itemQuery = Item.findById(itemId);
-    if (session) itemQuery.session(session);
-    const itemDoc = await itemQuery;
+  const itemIds = validEntries.map(([itemId]) => new mongoose.Types.ObjectId(itemId));
+  const itemQuery = Item.find({
+    _id: { $in: itemIds },
+  }).select("_id name stockQuantity trackInventory");
+  if (session) itemQuery.session(session);
+  const itemDocs = await itemQuery;
 
+  if (!itemDocs.length) return;
+
+  const itemsById = new Map(itemDocs.map((itemDoc: any) => [String(itemDoc._id), itemDoc]));
+  const bulkOperations: any[] = [];
+
+  for (const [itemId, delta] of validEntries) {
+    const itemDoc: any = itemsById.get(String(itemId));
     if (!itemDoc || !itemDoc.trackInventory) continue;
 
     const currentStock = Number(itemDoc.stockQuantity || 0);
@@ -1773,10 +1955,17 @@ const applyVendorCreditStockDelta = async (
       );
     }
 
-    const updateQuery = Item.findByIdAndUpdate(itemId, { $set: { stockQuantity: updatedStock } });
-    if (session) updateQuery.session(session);
-    await updateQuery;
+    bulkOperations.push({
+      updateOne: {
+        filter: { _id: itemDoc._id },
+        update: { $set: { stockQuantity: updatedStock } },
+      }
+    });
   }
+
+  if (!bulkOperations.length) return;
+
+  await Item.bulkWrite(bulkOperations, session ? { session } : undefined);
 };
 
 const createVendorCreditJournalEntry = async (
@@ -2276,7 +2465,7 @@ export const deleteBill = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
-    const bill = await Bill.findOneAndDelete({
+    const bill = await Bill.findOne({
       _id: id,
       organization: req.user.organizationId
     }).session(session);
@@ -2285,6 +2474,18 @@ export const deleteBill = async (req: AuthRequest, res: Response): Promise<void>
       res.status(404).json({ success: false, message: 'Bill not found' });
       return;
     }
+
+    const deletedVendorCreditIds = await deleteVendorCreditsLinkedToBill(
+      req.user.organizationId.toString(),
+      bill._id as mongoose.Types.ObjectId,
+      session
+    );
+
+    const deletedPaymentIds = await deletePaymentsLinkedToBill(
+      req.user.organizationId.toString(),
+      bill._id as mongoose.Types.ObjectId,
+      session
+    );
 
     // Reverse stock changes if the bill was not a draft/void/cancelled
     if (bill.status !== 'draft' && bill.status !== 'void' && bill.status !== 'cancelled') {
@@ -2303,6 +2504,11 @@ export const deleteBill = async (req: AuthRequest, res: Response): Promise<void>
         console.error('[BILLS] Error reversing journal entry on bill deletion:', err);
       }
     }
+
+    await Bill.deleteOne({
+      _id: id,
+      organization: req.user.organizationId
+    }).session(session);
 
     const linkedPurchaseOrderId = String(
       (bill as any).purchaseOrderId ||
@@ -2329,6 +2535,34 @@ export const deleteBill = async (req: AuthRequest, res: Response): Promise<void>
     }
 
     await session.commitTransaction();
+
+    for (const paymentId of deletedPaymentIds) {
+      try {
+        await syncLinkedBankTransaction({
+          organizationId: req.user.organizationId,
+          transactionKey: `payment_made:${paymentId}`,
+          source: "payment_made",
+          transactionType: "withdrawal",
+          debitOrCredit: "debit",
+          amount: 0,
+          shouldSync: false,
+        });
+      } catch (bankSyncError) {
+        console.error("[BILLS] Failed to remove linked bank transaction after payment delete:", bankSyncError);
+      }
+    }
+
+    if (deletedVendorCreditIds.length > 0) {
+      try {
+        await reverseAndDeleteVendorCreditJournals(
+          deletedVendorCreditIds,
+          req.user.organizationId.toString()
+        );
+      } catch (journalError: any) {
+        console.error("[BILLS] Failed to reverse linked vendor credit journals on bill delete:", journalError?.message || journalError);
+      }
+    }
+
     res.json({ success: true, message: 'Bill deleted' });
   } catch (error: any) {
     // Check if session has active transaction
@@ -2658,6 +2892,7 @@ const normalizeVendorCreditComments = (comments: any): any[] => {
 
 // Create vendor credit
 export const createVendorCredit = async (req: AuthRequest, res: Response): Promise<void> => {
+  const requestStartedAt = Date.now();
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
@@ -2684,28 +2919,38 @@ export const createVendorCredit = async (req: AuthRequest, res: Response): Promi
 
 
 
-    creditData.vendor = await resolveVendorReference(
-      creditData.vendor,
-      req.user.organizationId,
-      session
+    creditData.vendor = await measureRequestStep(
+      req as any,
+      "vendor-credits.resolve-vendor",
+      () => resolveVendorReference(
+        creditData.vendor,
+        req.user!.organizationId,
+        session
+      )
     );
 
     // Ensure numeric fields are numbers and sanitize item
     if (creditData.items) {
-      creditData.items = await normalizeVendorCreditItemsForPersistence(
-        String(req.user.organizationId),
-        creditData.items,
-        session
+      creditData.items = await measureRequestStep(
+        req as any,
+        "vendor-credits.normalize-items",
+        () => normalizeVendorCreditItemsForPersistence(
+          String(req.user!.organizationId),
+          creditData.items,
+          session
+        ),
+        { itemCount: Array.isArray(creditData.items) ? creditData.items.length : 0 }
       );
     }
     creditData.subtotal = Number(creditData.subtotal) || 0;
     creditData.total = Number(creditData.total) || 0;
     creditData.balance = Number(creditData.total) || 0;
 
-    // Log the payload to debug
-    console.log('Creating Vendor Credit Payload:', JSON.stringify(creditData, null, 2));
-
-    const [credit] = await VendorCredit.create([creditData], { session });
+    const [credit] = await measureRequestStep(
+      req as any,
+      "vendor-credits.create-document",
+      () => VendorCredit.create([creditData], { session }).then((docs) => docs as any),
+    );
 
     // Vendor credit is a purchase return: reduce stock when it becomes active.
     const stockDelta = buildVendorCreditStockDelta(
@@ -2714,26 +2959,29 @@ export const createVendorCredit = async (req: AuthRequest, res: Response): Promi
       (credit as any).items || [],
       (credit as any).status
     );
-    await applyVendorCreditStockDelta(req.user.organizationId.toString(), stockDelta, session);
+    await measureRequestStep(
+      req as any,
+      "vendor-credits.apply-stock-delta",
+      () => applyVendorCreditStockDelta(req.user!.organizationId.toString(), stockDelta, session),
+      { itemCount: stockDelta.size }
+    );
 
-    await session.commitTransaction();
-
-    // Post accounting only for active vendor credits (not draft/cancelled/void).
-    if (isVendorCreditPostingStatus((credit as any).status)) {
-      const vendorCreditJournalId = await createVendorCreditJournalEntry(
-        credit,
-        req.user.organizationId.toString(),
-        req.user.userId
-      );
-      if (!vendorCreditJournalId) {
-        console.warn(`[VENDOR CREDITS] Journal entry not created for ${credit.vendorCreditNumber}`);
-      }
-    }
+    await measureRequestStep(
+      req as any,
+      "vendor-credits.auto-apply-linked-bill",
+      () => applyVendorCreditToLinkedBill(req.user!.organizationId.toString(), credit, session)
+    );
 
     const creditDataForResponse =
       typeof (credit as any)?.toObject === "function"
         ? (credit as any).toObject()
         : credit;
+
+    await measureRequestStep(
+      req as any,
+      "vendor-credits.commit-transaction",
+      () => session.commitTransaction()
+    );
 
     res.status(201).json({
       success: true,
@@ -2743,8 +2991,36 @@ export const createVendorCredit = async (req: AuthRequest, res: Response): Promi
         creditNote: (creditDataForResponse as any)?.vendorCreditNumber || (credit as any)?.vendorCreditNumber,
         referenceNumber: (creditDataForResponse as any)?.orderNumber || (credit as any)?.orderNumber,
         amount: (creditDataForResponse as any)?.total ?? (credit as any)?.total
+      },
+      meta: {
+        responseMs: Date.now() - requestStartedAt,
       }
     });
+
+    logRequestTiming(req as any, {
+      action: "create-vendor-credit",
+      organizationId: String(req.user.organizationId),
+      status: (credit as any)?.status || null,
+      responseMs: Date.now() - requestStartedAt,
+    });
+
+    // Journal work is non-UI-critical. Run it after the response so save feels instant.
+    if (isVendorCreditPostingStatus((credit as any).status)) {
+      setImmediate(async () => {
+        try {
+          const vendorCreditJournalId = await createVendorCreditJournalEntry(
+            credit,
+            req.user!.organizationId.toString(),
+            req.user!.userId
+          );
+          if (!vendorCreditJournalId) {
+            console.warn(`[VENDOR CREDITS] Journal entry not created for ${credit.vendorCreditNumber}`);
+          }
+        } catch (journalError: any) {
+          console.error('[VENDOR CREDITS] Failed to create journal after vendor credit save:', journalError?.message || journalError);
+        }
+      });
+    }
   } catch (error: any) {
     // Check if session has an active transaction to abort
     if (session.inTransaction()) {
@@ -2845,6 +3121,7 @@ export const getVendorCredit = async (req: AuthRequest, res: Response): Promise<
 
 // Update vendor credit
 export const updateVendorCredit = async (req: AuthRequest, res: Response): Promise<void> => {
+  const requestStartedAt = Date.now();
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
@@ -2861,10 +3138,14 @@ export const updateVendorCredit = async (req: AuthRequest, res: Response): Promi
       return;
     }
 
-    const existingCredit = await VendorCredit.findOne({
-      _id: id,
-      organization: req.user.organizationId
-    }).session(session);
+    const existingCredit = await measureRequestStep(
+      req as any,
+      "vendor-credits.load-existing",
+      () => VendorCredit.findOne({
+        _id: id,
+        organization: req.user!.organizationId
+      }).session(session)
+    );
 
     if (!existingCredit) {
       await session.abortTransaction();
@@ -2890,18 +3171,27 @@ export const updateVendorCredit = async (req: AuthRequest, res: Response): Promi
     delete updateData.attachedFiles;
 
     if (updateData.vendor !== undefined) {
-      updateData.vendor = await resolveVendorReference(
-        updateData.vendor,
-        req.user.organizationId,
-        session
+      updateData.vendor = await measureRequestStep(
+        req as any,
+        "vendor-credits.resolve-vendor",
+        () => resolveVendorReference(
+          updateData.vendor,
+          req.user!.organizationId,
+          session
+        )
       );
     }
 
     if (Array.isArray(updateData.items)) {
-      updateData.items = await normalizeVendorCreditItemsForPersistence(
-        String(req.user.organizationId),
-        updateData.items,
-        session
+      updateData.items = await measureRequestStep(
+        req as any,
+        "vendor-credits.normalize-items",
+        () => normalizeVendorCreditItemsForPersistence(
+          String(req.user!.organizationId),
+          updateData.items,
+          session
+        ),
+        { itemCount: updateData.items.length }
       );
     }
 
@@ -2925,10 +3215,14 @@ export const updateVendorCredit = async (req: AuthRequest, res: Response): Promi
     const isMetadataOnlyUpdate =
       updateFieldKeys.length > 0 && updateFieldKeys.every((key) => metadataOnlyFields.has(key));
 
-    const credit = await VendorCredit.findOneAndUpdate(
-      { _id: id, organization: req.user.organizationId },
-      updateData,
-      { new: true, runValidators: true, session }
+    const credit = await measureRequestStep(
+      req as any,
+      "vendor-credits.update-document",
+      () => VendorCredit.findOneAndUpdate(
+        { _id: id, organization: req.user!.organizationId },
+        updateData,
+        { new: true, runValidators: true, session }
+      )
     );
 
     if (!credit) {
@@ -2938,6 +3232,12 @@ export const updateVendorCredit = async (req: AuthRequest, res: Response): Promi
     }
 
     if (!isMetadataOnlyUpdate) {
+      await measureRequestStep(
+        req as any,
+        "vendor-credits.release-linked-bill-before-update",
+        () => releaseVendorCreditFromLinkedBill(req.user!.organizationId.toString(), existingCredit, session)
+      );
+
       const nextStatus = updateData.status !== undefined ? updateData.status : existingCredit.status;
       const nextItems = Array.isArray(updateData.items) ? updateData.items : (existingCredit.items || []);
       const stockDelta = buildVendorCreditStockDelta(
@@ -2946,32 +3246,62 @@ export const updateVendorCredit = async (req: AuthRequest, res: Response): Promi
         nextItems,
         nextStatus
       );
-      await applyVendorCreditStockDelta(req.user.organizationId.toString(), stockDelta, session);
+      await measureRequestStep(
+        req as any,
+        "vendor-credits.apply-stock-delta",
+        () => applyVendorCreditStockDelta(req.user!.organizationId.toString(), stockDelta, session),
+        { itemCount: stockDelta.size }
+      );
+
+      await measureRequestStep(
+        req as any,
+        "vendor-credits.auto-apply-linked-bill-after-update",
+        () => applyVendorCreditToLinkedBill(req.user!.organizationId.toString(), credit, session)
+      );
     }
 
-    await session.commitTransaction();
+    await measureRequestStep(
+      req as any,
+      "vendor-credits.commit-transaction",
+      () => session.commitTransaction()
+    );
 
-    // Rebuild accounting entry so GL reflects current vendor credit data/state.
-    if (!isMetadataOnlyUpdate) {
-      try {
-        await reverseAndDeleteVendorCreditJournals([credit._id], req.user.organizationId.toString());
-
-        if (isVendorCreditPostingStatus(credit.status)) {
-          const vendorCreditJournalId = await createVendorCreditJournalEntry(
-            credit,
-            req.user.organizationId.toString(),
-            req.user.userId
-          );
-          if (!vendorCreditJournalId) {
-            console.warn(`[VENDOR CREDITS] Journal entry not recreated for ${credit.vendorCreditNumber}`);
-          }
-        }
-      } catch (journalError: any) {
-        console.error('[VENDOR CREDITS] Failed to rebuild journal after update:', journalError?.message || journalError);
+    res.json({
+      success: true,
+      data: credit,
+      meta: {
+        responseMs: Date.now() - requestStartedAt,
       }
-    }
+    });
 
-    res.json({ success: true, data: credit });
+    logRequestTiming(req as any, {
+      action: "update-vendor-credit",
+      organizationId: String(req.user.organizationId),
+      status: credit.status || null,
+      responseMs: Date.now() - requestStartedAt,
+    });
+
+    // Rebuild accounting after the response so edits do not block the UI.
+    if (!isMetadataOnlyUpdate) {
+      setImmediate(async () => {
+        try {
+          await reverseAndDeleteVendorCreditJournals([credit._id], req.user!.organizationId.toString());
+
+          if (isVendorCreditPostingStatus(credit.status)) {
+            const vendorCreditJournalId = await createVendorCreditJournalEntry(
+              credit,
+              req.user!.organizationId.toString(),
+              req.user!.userId
+            );
+            if (!vendorCreditJournalId) {
+              console.warn(`[VENDOR CREDITS] Journal entry not recreated for ${credit.vendorCreditNumber}`);
+            }
+          }
+        } catch (journalError: any) {
+          console.error('[VENDOR CREDITS] Failed to rebuild journal after update:', journalError?.message || journalError);
+        }
+      });
+    }
   } catch (error: any) {
     if (session.inTransaction()) {
       try {
@@ -3072,6 +3402,7 @@ export const deleteVendorCredit = async (req: AuthRequest, res: Response): Promi
       "draft"
     );
     await applyVendorCreditStockDelta(req.user.organizationId.toString(), stockDelta, session);
+    await releaseVendorCreditFromLinkedBill(req.user.organizationId.toString(), credit, session);
 
     await VendorCredit.deleteOne({
       _id: id,
@@ -3148,6 +3479,8 @@ export const bulkDeleteVendorCredits = async (req: AuthRequest, res: Response): 
       for (const [itemId, delta] of stockDelta.entries()) {
         combinedStockDelta.set(itemId, (combinedStockDelta.get(itemId) || 0) + delta);
       }
+
+      await releaseVendorCreditFromLinkedBill(req.user.organizationId.toString(), credit, session);
     }
 
     await applyVendorCreditStockDelta(req.user.organizationId.toString(), combinedStockDelta, session);

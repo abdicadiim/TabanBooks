@@ -1,8 +1,9 @@
 ﻿import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Play, MoreVertical, ChevronDown, X, Eye, EyeOff, Plus, Check, Search, Minus, ArrowLeft, Info, User as UserIcon, Pencil, Star } from "lucide-react";
+import { Play, MoreVertical, ChevronDown, X, Eye, EyeOff, Plus, Check, Search, Minus, ArrowLeft, Info, User as UserIcon, Pencil, Star, AlertTriangle } from "lucide-react";
 import { usersAPI, rolesAPI, locationsAPI } from "../../../../../services/api";
 import { getCurrentUser } from "../../../../../services/auth";
+import { LocationSelectDropdown } from "../../../../../components/LocationSelectDropdown";
 
 const STANDARD_ROLE_OPTIONS = [
   { value: "admin", label: "Admin" },
@@ -64,6 +65,8 @@ type RoleRecord = {
   [key: string]: any;
 };
 
+const USERS_CACHE_KEY = "settings-users-page-cache";
+
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "Unknown error";
 
@@ -77,9 +80,22 @@ const getEntityId = (value: { _id?: EntityId; id?: EntityId } | EntityId | null 
 export default function UsersPage() {
   const currentUser = getCurrentUser();
   const canManageUsers = ["owner", "admin"].includes(String(currentUser?.role || "").toLowerCase());
-  const [users, setUsers] = useState<UserRecord[]>([]);
+  const [users, setUsers] = useState<UserRecord[]>(() => {
+    if (typeof window === "undefined") {
+      return [];
+    }
+
+    try {
+      const cachedUsers = window.sessionStorage.getItem(USERS_CACHE_KEY);
+      return cachedUsers ? JSON.parse(cachedUsers) : [];
+    } catch (error) {
+      console.error("Failed to read users cache:", error);
+      return [];
+    }
+  });
   const [roles, setRoles] = useState<RoleRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasLoadedUsers, setHasLoadedUsers] = useState(users.length > 0);
   const [statusFilter, setStatusFilter] = useState("All");
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -117,6 +133,7 @@ export default function UsersPage() {
   });
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editLocationAccessModalOpen, setEditLocationAccessModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [editData, setEditData] = useState({
     name: "",
     email: "",
@@ -136,6 +153,7 @@ export default function UsersPage() {
   const statusOptions = ["All", "Inactive", "Active"];
 
   const hasFetchedRef = useRef(false);
+  const hasHandledInitialStatusRef = useRef(false);
 
   // Fetch roles from backend
   const fetchRoles = useCallback(async () => {
@@ -152,7 +170,7 @@ export default function UsersPage() {
   // Fetch users from backend
   const fetchUsers = useCallback(async (showLoading = true) => {
     try {
-      if (showLoading) {
+      if (showLoading && users.length === 0) {
         setLoading(true);
       }
       setError(null);
@@ -179,11 +197,24 @@ export default function UsersPage() {
       console.error("Error fetching users:", err);
       setError(getErrorMessage(err));
     } finally {
+      setHasLoadedUsers(true);
       if (showLoading) {
         setLoading(false);
       }
     }
-  }, [statusFilter]);
+  }, [statusFilter, users.length]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      window.sessionStorage.setItem(USERS_CACHE_KEY, JSON.stringify(users));
+    } catch (error) {
+      console.error("Failed to write users cache:", error);
+    }
+  }, [users]);
 
   // Fetch locations
   const fetchLocations = useCallback(async () => {
@@ -220,10 +251,17 @@ export default function UsersPage() {
 
   // Fetch users when status filter changes (but not on initial mount)
   useEffect(() => {
-    if (hasFetchedRef.current) {
-      fetchUsers(true);
+    if (!hasFetchedRef.current) {
+      return;
     }
-  }, [statusFilter]);
+
+    if (!hasHandledInitialStatusRef.current) {
+      hasHandledInitialStatusRef.current = true;
+      return;
+    }
+
+    fetchUsers(true);
+  }, [statusFilter, fetchUsers]);
 
   // Fetch user details when a user is selected
   useEffect(() => {
@@ -660,10 +698,6 @@ export default function UsersPage() {
 
     if (!selectedUser) return;
 
-    if (!window.confirm(`Are you sure you want to delete ${selectedUser.name}? This will permanently delete their account.`)) {
-      return;
-    }
-
     try {
       setIsSaving(true);
       setError(null);
@@ -676,6 +710,7 @@ export default function UsersPage() {
         setError(null);
         setSuccessMessage("User deleted successfully!");
         setTimeout(() => setSuccessMessage(null), 3000);
+        setDeleteModalOpen(false);
         setSelectedUser(null); // Close detail panel
         await fetchUsers(false); // Refresh users list
       } else {
@@ -721,27 +756,43 @@ export default function UsersPage() {
       });
 
       if (createResponse.success && createResponse.data.id) {
-        // Now send invitation email with location access
-        const sendInviteResponse = await usersAPI.sendInvitation(createResponse.data.id, {
-          tempPassword: userPassword,
-          accessibleLocations,
-          defaultBusinessLocation: defaultBusinessLocation || null,
-          defaultWarehouseLocation: defaultWarehouseLocation || null,
-        });
+        const createdUserId = createResponse.data.id;
 
-        if (sendInviteResponse.success) {
-          // Close modals and reset
-          setLocationAccessModalOpen(false);
-          setInviteModalOpen(false);
-          setInviteData({ name: "", email: "", role: "", password: "" });
-          setAccessibleLocations([]);
-          setDefaultBusinessLocation("");
-          setDefaultWarehouseLocation("");
-          setError(null);
-          fetchUsers(); // Refresh users list
-        } else {
-          setError(sendInviteResponse.message || "User created but failed to send invitation email");
-        }
+        // Close the flow immediately after user creation so the UI stays responsive.
+        setLocationAccessModalOpen(false);
+        setInviteModalOpen(false);
+        setInviteData({ name: "", email: "", role: "", password: "" });
+        setAccessibleLocations([]);
+        setDefaultBusinessLocation("");
+        setDefaultWarehouseLocation("");
+        setError(null);
+        setSuccessMessage("User created. Sending invitation email...");
+        setTimeout(() => setSuccessMessage(null), 2500);
+        setIsSaving(false);
+        void fetchUsers(false);
+
+        void (async () => {
+          try {
+            const sendInviteResponse = await usersAPI.sendInvitation(createdUserId, {
+              tempPassword: userPassword,
+              accessibleLocations,
+              defaultBusinessLocation: defaultBusinessLocation || null,
+              defaultWarehouseLocation: defaultWarehouseLocation || null,
+            });
+
+            if (sendInviteResponse.success) {
+              setSuccessMessage("Invitation email sent successfully!");
+              setTimeout(() => setSuccessMessage(null), 3000);
+              await fetchUsers(false);
+            } else {
+              setError(sendInviteResponse.message || "User created but failed to send invitation email");
+            }
+          } catch (err) {
+            console.error("Error sending invitation email:", err);
+            setError(getErrorMessage(err));
+          }
+        })();
+        return;
       } else {
         setError(createResponse.message || "Failed to create user");
       }
@@ -787,35 +838,46 @@ export default function UsersPage() {
         // Generate a temporary password for the invitation
         const tempPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12) + "A1!";
 
-        // Send invitation email with updated location access
-        const sendInviteResponse = await usersAPI.sendInvitation(userId, {
-          tempPassword,
-          accessibleLocations,
-          defaultBusinessLocation: defaultBusinessLocation || null,
-          defaultWarehouseLocation: defaultWarehouseLocation || null,
-        });
+        // Close immediately after saving the location access update.
+        setEditLocationAccessModalOpen(false);
+        setAccessibleLocations([]);
+        setDefaultBusinessLocation("");
+        setDefaultWarehouseLocation("");
+        setLocationSearch("");
+        setEditData({ name: "", email: "", role: "" });
+        setError(null);
+        setSuccessMessage("Location access saved. Sending invitation email...");
+        setTimeout(() => setSuccessMessage(null), 2500);
+        setIsSaving(false);
+        void fetchUsers(false);
 
-        if (sendInviteResponse.success) {
-          // Close modals and reset
-          setEditLocationAccessModalOpen(false);
-          setAccessibleLocations([]);
-          setDefaultBusinessLocation("");
-          setDefaultWarehouseLocation("");
-          setLocationSearch("");
-          setEditData({ name: "", email: "", role: "" });
-          setError(null);
-          fetchUsers(); // Refresh users list
-          // Refresh selected user details
-          if (userId) {
-            const userResponse = await usersAPI.getById(userId);
-            if (userResponse.success) {
-              setSelectedUser(userResponse.data);
-              setUserDetails(userResponse.data);
+        void (async () => {
+          try {
+            const sendInviteResponse = await usersAPI.sendInvitation(userId, {
+              tempPassword,
+              accessibleLocations,
+              defaultBusinessLocation: defaultBusinessLocation || null,
+              defaultWarehouseLocation: defaultWarehouseLocation || null,
+            });
+
+            if (sendInviteResponse.success) {
+              setSuccessMessage("Invitation email sent successfully!");
+              setTimeout(() => setSuccessMessage(null), 3000);
+              await fetchUsers(false);
+              const userResponse = await usersAPI.getById(userId);
+              if (userResponse.success) {
+                setSelectedUser(userResponse.data);
+                setUserDetails(userResponse.data);
+              }
+            } else {
+              setError(sendInviteResponse.message || "Location access updated but failed to send email");
             }
+          } catch (err) {
+            console.error("Error sending location access invitation email:", err);
+            setError(getErrorMessage(err));
           }
-        } else {
-          setError(sendInviteResponse.message || "Location access updated but failed to send email");
-        }
+        })();
+        return;
       } else {
         setError(updateResponse.message || "Failed to update user location access");
       }
@@ -879,13 +941,6 @@ export default function UsersPage() {
 
   return (
     <div className="flex gap-0 h-full">
-      {/* Error Message */}
-      {error && (
-        <div className="absolute top-20 left-6 right-6 z-50 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
-          {error}
-        </div>
-      )}
-
       {/* Success Message */}
       {successMessage && (
         <div className="absolute top-20 left-6 right-6 z-50 p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm">
@@ -993,17 +1048,19 @@ export default function UsersPage() {
             Only Admin users can invite, edit, activate/inactivate, or delete users.
           </div>
         )}
-        {loading ? (
-          <div className="p-8 text-center">
-            <div className="w-6 h-6 border-2 border-[#156372] border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-            <p className="text-gray-500 text-sm">Loading users...</p>
-          </div>
-        ) : users.length === 0 ? (
+        {users.length === 0 && hasLoadedUsers ? (
           <div className="p-8 text-center">
             <p className="text-gray-500 text-sm">No users found</p>
           </div>
         ) : (
-          <div className="overflow-y-auto flex-1">
+          <div className="relative overflow-y-auto flex-1">
+            {loading && users.length > 0 ? (
+              <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center pt-4">
+                <div className="rounded-full border border-[#156372]/15 bg-white/95 px-3 py-1 text-xs font-medium text-[#156372] shadow-sm">
+                  Refreshing users...
+                </div>
+              </div>
+            ) : null}
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                 <tr>
@@ -1082,7 +1139,7 @@ export default function UsersPage() {
                   setEditModalOpen(true);
                 }
               }}
-              className="px-3 py-1.5 bg-red-600 text-white text-sm font-medium hover:bg-red-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1.5 bg-[#156372] text-white text-sm font-medium hover:bg-[#0f4e5a] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Pencil size={14} />
               Edit
@@ -1108,7 +1165,7 @@ export default function UsersPage() {
                   <button
                     onClick={handleInviteAgain}
                     disabled={isSaving}
-                    className="w-full px-4 py-2 text-left text-sm text-white bg-blue-600 hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed rounded-t-lg"
+                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-[#f1f3f6] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed rounded-t-lg"
                   >
                     Invite again
                   </button>
@@ -1129,8 +1186,11 @@ export default function UsersPage() {
                       Mark as Active
                     </button>
                   )}
-                  <button
-                    onClick={handleDeleteUser}
+                    <button
+                    onClick={() => {
+                      setDetailMenuOpen(false);
+                      setDeleteModalOpen(true);
+                    }}
                     disabled={isSaving}
                     className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed rounded-b-lg"
                   >
@@ -1268,6 +1328,45 @@ export default function UsersPage() {
         </div>
       )}
 
+      {deleteModalOpen && selectedUser && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-md overflow-hidden rounded-lg border border-gray-100 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 px-6 py-4">
+              <div className="flex items-center gap-2 text-red-600">
+                <AlertTriangle size={20} />
+                <h2 className="text-lg font-semibold">Delete User</h2>
+              </div>
+              <button
+                onClick={() => setDeleteModalOpen(false)}
+                className="rounded-full p-1 transition-colors hover:bg-gray-200"
+              >
+                <X size={20} className="text-gray-500 hover:text-red-500" />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-gray-700">
+                Are you sure you want to delete <span className="font-semibold">{selectedUser.name}</span>? This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-gray-100 bg-gray-50/50 px-6 py-4">
+              <button
+                onClick={() => setDeleteModalOpen(false)}
+                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteUser}
+                disabled={isSaving}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSaving ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Invite User Modal */}
       {inviteModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]">
@@ -1278,6 +1377,7 @@ export default function UsersPage() {
                 <button
                   onClick={() => {
                     setInviteModalOpen(false);
+                    setInviteDropdownOpen(false);
                     setInviteData({ name: "", email: "", role: "", password: "" });
                     setError(null);
                   }}
@@ -1288,7 +1388,7 @@ export default function UsersPage() {
               </div>
 
               {error && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+                <div className="mb-4 rounded-lg border border-[#156372]/20 bg-[#156372]/8 p-3 text-sm text-[#156372]">
                   {error}
                 </div>
               )}
@@ -1302,7 +1402,7 @@ export default function UsersPage() {
                     type="text"
                     value={inviteData.name}
                     onChange={(e) => setInviteData({ ...inviteData, name: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#156372]"
                     placeholder="Enter user's name"
                   />
                 </div>
@@ -1315,7 +1415,7 @@ export default function UsersPage() {
                     type="email"
                     value={inviteData.email}
                     onChange={(e) => setInviteData({ ...inviteData, email: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#156372]"
                     placeholder="Enter user's email"
                   />
                 </div>
@@ -1324,18 +1424,70 @@ export default function UsersPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Role <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    value={inviteData.role}
-                    onChange={(e) => setInviteData({ ...inviteData, role: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select a role</option>
-                    {roleOptions.map((role) => (
-                      <option key={role.value} value={role.value}>
-                        {role.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <button
+                      ref={inviteDropdownButtonRef}
+                      type="button"
+                      onClick={() => setInviteDropdownOpen((prev) => !prev)}
+                      className={`flex h-10 w-full items-center justify-between rounded-lg border bg-white px-3 text-left text-sm transition-colors focus:outline-none ${
+                        inviteDropdownOpen ? "border-[#156372] ring-2 ring-[#156372]" : "border-gray-300"
+                      }`}
+                    >
+                      <span className={inviteData.role ? "text-gray-900" : "text-gray-400"}>
+                        {inviteData.role
+                          ? roleOptions.find((role) => role.value === inviteData.role)?.label || inviteData.role
+                          : "Select a role"}
+                      </span>
+                      <ChevronDown
+                        size={16}
+                        className={`text-gray-500 transition-transform ${inviteDropdownOpen ? "rotate-180" : ""}`}
+                      />
+                    </button>
+                    {inviteDropdownOpen && inviteDropdownButtonRef.current && createPortal(
+                      <div
+                        ref={inviteDropdownRef}
+                        className="fixed z-[10020] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg"
+                        style={{
+                          top: `${inviteDropdownButtonRef.current.getBoundingClientRect().bottom + 6}px`,
+                          left: `${inviteDropdownButtonRef.current.getBoundingClientRect().left}px`,
+                          width: `${inviteDropdownButtonRef.current.getBoundingClientRect().width}px`,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInviteData({ ...inviteData, role: "" });
+                            setInviteDropdownOpen(false);
+                          }}
+                          className={`w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-[#f1f3f6] ${
+                            inviteData.role ? "text-gray-700" : "bg-[#f1f3f6] text-gray-900"
+                          }`}
+                        >
+                          Select a role
+                        </button>
+                        {roleOptions.map((role) => {
+                          const isSelected = inviteData.role === role.value;
+                          return (
+                            <button
+                              key={role.value}
+                              type="button"
+                              onClick={() => {
+                                setInviteData({ ...inviteData, role: role.value });
+                                setInviteDropdownOpen(false);
+                              }}
+                              className={`flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors hover:bg-[#f1f3f6] ${
+                                isSelected ? "bg-[#f1f3f6] text-gray-900" : "text-gray-700"
+                              }`}
+                            >
+                              <span>{role.label}</span>
+                              {isSelected ? <Check size={15} className="text-gray-900" /> : null}
+                            </button>
+                          );
+                        })}
+                      </div>,
+                      document.body
+                    )}
+                  </div>
                 </div>
 
 
@@ -1345,6 +1497,7 @@ export default function UsersPage() {
                 <button
                   onClick={() => {
                     setInviteModalOpen(false);
+                    setInviteDropdownOpen(false);
                     setInviteData({ name: "", email: "", role: "", password: "" });
                     setError(null);
                   }}
@@ -1354,7 +1507,7 @@ export default function UsersPage() {
                 </button>
                 <button
                   onClick={handleInviteUser}
-                  className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700"
+                  className="px-4 py-2 rounded-lg bg-[#156372] text-white text-sm font-medium hover:bg-[#0f4e5a]"
                 >
                   Invite User
                 </button>
@@ -1699,7 +1852,7 @@ export default function UsersPage() {
                         type="text"
                         value={locationSearch}
                         onChange={(e) => setLocationSearch(e.target.value)}
-                        className="w-full h-9 pl-9 pr-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        className="w-full h-9 pl-9 pr-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#156372] text-sm"
                         placeholder="Type to search Locations"
                       />
                     </div>
@@ -1716,7 +1869,7 @@ export default function UsersPage() {
                         return (
                           <div
                             key={locId}
-                            className={`flex items-center gap-2 p-2 rounded cursor-pointer ${isSelected ? "bg-gray-50" : "hover:bg-gray-50"
+                            className={`flex items-center gap-2 p-2 rounded cursor-pointer ${isSelected ? "bg-[#156372]/8" : "hover:bg-[#156372]/8"
                               }`}
                             onClick={() => handleLocationSelect(locId)}
                           >
@@ -1751,12 +1904,12 @@ export default function UsersPage() {
                         return (
                           <div
                             key={locId}
-                            className="flex items-center justify-between p-2 rounded hover:bg-gray-50"
+                            className="flex items-center justify-between p-2 rounded hover:bg-[#156372]/8"
                           >
                             <span className="text-sm text-gray-700">{location.name}</span>
                             <button
                               onClick={() => handleLocationRemove(locId)}
-                              className="text-red-600 hover:text-red-700"
+                              className="text-[#156372] hover:text-[#0f4e5a]"
                             >
                               <X size={16} />
                             </button>
@@ -1774,31 +1927,28 @@ export default function UsersPage() {
               {/* Default Location Settings */}
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-red-600 mb-2">
-                    User's Default Business Location <span className="text-red-500">*</span>
+                  <label className="flex items-center gap-2 text-sm font-medium text-[#156372] mb-2">
+                    User's Default Business Location <span className="text-[#156372]">*</span>
                     <Info size={14} className="text-gray-400" />
                   </label>
-                  <select
+                  <LocationSelectDropdown
                     value={defaultBusinessLocation}
-                    onChange={(e) => {
-                      const selectedLocation = e.target.value;
+                    options={businessLocations.map((location) => ({
+                      id: String(location._id || location.id || ""),
+                      label: String(location.name || ""),
+                    }))}
+                    placeholder="Select Location"
+                    neutralSelection
+                    onSelect={(location) => {
+                      const selectedLocation = location.id;
                       setDefaultBusinessLocation(selectedLocation);
-                      // Automatically set warehouse location to the same as business location
                       if (selectedLocation && accessibleLocations.includes(selectedLocation)) {
                         setDefaultWarehouseLocation(selectedLocation);
                       } else {
                         setDefaultWarehouseLocation("");
                       }
                     }}
-                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  >
-                    <option value="">Select Location</option>
-                    {businessLocations.map((location) => (
-                      <option key={location._id || location.id} value={location._id || location.id}>
-                        {location.name}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
 
                 <div>
@@ -1806,18 +1956,16 @@ export default function UsersPage() {
                     User's Default Warehouse Location
                     <Info size={14} className="text-gray-400" />
                   </label>
-                  <select
+                  <LocationSelectDropdown
                     value={defaultWarehouseLocation}
-                    onChange={(e) => setDefaultWarehouseLocation(e.target.value)}
-                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  >
-                    <option value="">Select Location</option>
-                    {warehouseLocations.map((location) => (
-                      <option key={location._id || location.id} value={location._id || location.id}>
-                        {location.name}
-                      </option>
-                    ))}
-                  </select>
+                    options={warehouseLocations.map((location) => ({
+                      id: String(location._id || location.id || ""),
+                      label: String(location.name || ""),
+                    }))}
+                    placeholder="Select Location"
+                    neutralSelection
+                    onSelect={(location) => setDefaultWarehouseLocation(location.id)}
+                  />
                 </div>
               </div>
 
@@ -1828,7 +1976,7 @@ export default function UsersPage() {
                     setLocationAccessModalOpen(false);
                     setInviteModalOpen(true);
                   }}
-                  className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+                  className="flex items-center gap-2 text-sm text-gray-600 hover:text-[#156372]"
                 >
                   <ArrowLeft size={16} />
                   <span>Back</span>
@@ -1839,14 +1987,14 @@ export default function UsersPage() {
                       setLocationAccessModalOpen(false);
                       setInviteModalOpen(true);
                     }}
-                    className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:border-[#156372]/30 hover:bg-[#156372]/8 hover:text-[#156372]"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleSendInvite}
                     disabled={isSaving || !defaultBusinessLocation}
-                    className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 rounded-lg bg-[#156372] text-white text-sm font-medium hover:bg-[#0f4e5a] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isSaving ? "Sending..." : "Send Invite"}
                   </button>
@@ -1881,7 +2029,7 @@ export default function UsersPage() {
               </div>
 
               {error && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+                <div className="mb-4 rounded-lg border border-[#156372]/20 bg-[#156372]/8 p-3 text-sm text-[#156372]">
                   {error}
                 </div>
               )}
@@ -1916,7 +2064,7 @@ export default function UsersPage() {
                         type="text"
                         value={locationSearch}
                         onChange={(e) => setLocationSearch(e.target.value)}
-                        className="w-full h-9 pl-9 pr-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        className="w-full h-9 pl-9 pr-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#156372] text-sm"
                         placeholder="Type to search Locations"
                       />
                     </div>
@@ -1933,7 +2081,7 @@ export default function UsersPage() {
                         return (
                           <div
                             key={locId}
-                            className={`flex items-center gap-2 p-2 rounded cursor-pointer ${isSelected ? "bg-gray-50" : "hover:bg-gray-50"
+                            className={`flex items-center gap-2 p-2 rounded cursor-pointer ${isSelected ? "bg-[#156372]/8" : "hover:bg-[#156372]/8"
                               }`}
                             onClick={() => handleLocationSelect(locId)}
                           >
@@ -1968,12 +2116,12 @@ export default function UsersPage() {
                         return (
                           <div
                             key={locId}
-                            className="flex items-center justify-between p-2 rounded hover:bg-gray-50"
+                            className="flex items-center justify-between p-2 rounded hover:bg-[#156372]/8"
                           >
                             <span className="text-sm text-gray-700">{location.name}</span>
                             <button
                               onClick={() => handleLocationRemove(locId)}
-                              className="text-red-600 hover:text-red-700"
+                              className="text-[#156372] hover:text-[#0f4e5a]"
                             >
                               <X size={16} />
                             </button>
@@ -1991,49 +2139,44 @@ export default function UsersPage() {
               {/* Default Location Settings */}
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-red-600 mb-2">
-                    User's Default Business Location <span className="text-red-500">*</span>
+                  <label className="flex items-center gap-2 text-sm font-medium text-[#156372] mb-2">
+                    User's Default Business Location <span className="text-[#156372]">*</span>
                     <Info size={14} className="text-gray-400" />
                   </label>
-                  <select
+                  <LocationSelectDropdown
                     value={defaultBusinessLocation}
-                    onChange={(e) => {
-                      const selectedLocation = e.target.value;
+                    options={businessLocations.map((location) => ({
+                      id: String(location._id || location.id || ""),
+                      label: String(location.name || ""),
+                    }))}
+                    placeholder="Select Location"
+                    neutralSelection
+                    onSelect={(location) => {
+                      const selectedLocation = location.id;
                       setDefaultBusinessLocation(selectedLocation);
-                      // Automatically set warehouse location to the same as business location
                       if (selectedLocation && accessibleLocations.includes(selectedLocation)) {
                         setDefaultWarehouseLocation(selectedLocation);
                       } else {
                         setDefaultWarehouseLocation("");
                       }
                     }}
-                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  >
-                    <option value="">Select Location</option>
-                    {businessLocations.map((location) => (
-                      <option key={location._id || location.id} value={location._id || location.id}>
-                        {location.name}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
                 <div>
                   <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                    User's Default Warehouse Location <span className="text-red-500">*</span>
+                    User's Default Warehouse Location <span className="text-[#156372]">*</span>
                     <Info size={14} className="text-gray-400" />
                   </label>
-                  <select
+                  <LocationSelectDropdown
                     value={defaultWarehouseLocation}
-                    onChange={(e) => setDefaultWarehouseLocation(e.target.value)}
-                    className="w-full h-10 px-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  >
-                    <option value="">Select Location</option>
-                    {warehouseLocations.map((location) => (
-                      <option key={location._id || location.id} value={location._id || location.id}>
-                        {location.name}
-                      </option>
-                    ))}
-                  </select>
+                    options={warehouseLocations.map((location) => ({
+                      id: String(location._id || location.id || ""),
+                      label: String(location.name || ""),
+                    }))}
+                    placeholder="Select Location"
+                    neutralSelection
+                    onSelect={(location) => setDefaultWarehouseLocation(location.id)}
+                  />
                 </div>
               </div>
 
@@ -2048,7 +2191,7 @@ export default function UsersPage() {
                     setLocationSearch("");
                     setEditData({ name: "", email: "", role: "" });
                   }}
-                  className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+                  className="flex items-center gap-2 text-sm text-gray-600 hover:text-[#156372]"
                 >
                   <ArrowLeft size={16} />
                   <span>Back</span>
@@ -2063,14 +2206,14 @@ export default function UsersPage() {
                       setLocationSearch("");
                       setEditData({ name: "", email: "", role: "" });
                     }}
-                    className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:border-[#156372]/30 hover:bg-[#156372]/8 hover:text-[#156372]"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleUpdateUserLocationAccess}
                     disabled={isSaving || !defaultBusinessLocation}
-                    className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 rounded-lg bg-[#156372] text-white text-sm font-medium hover:bg-[#0f4e5a] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isSaving ? "Saving..." : "Save & Send Email"}
                   </button>

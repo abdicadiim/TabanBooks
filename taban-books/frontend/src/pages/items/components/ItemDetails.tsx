@@ -207,6 +207,48 @@ export default function ItemDetails({
     const statusDropdownRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    const refreshItemCoreData = async () => {
+        if (!itemId) return;
+        try {
+            const response = await itemsAPI.getById(itemId);
+            const latestItem = response?.data || response;
+            if (!latestItem || typeof latestItem !== "object") return;
+
+            const normalizedItem = {
+                ...latestItem,
+                id: latestItem.id || latestItem._id || itemId,
+                _id: latestItem._id || latestItem.id || itemId,
+            };
+
+            setItems((prev) =>
+                prev.map((existing) => {
+                    const existingId = String(existing.id || existing._id || "").trim();
+                    return existingId === itemId ? { ...existing, ...normalizedItem } : existing;
+                })
+            );
+        } catch (error) {
+            console.warn("Failed to hydrate item detail record", error);
+        }
+    };
+
+    const refreshInventorySummary = async () => {
+        try {
+            const summaryRes = await reportsAPI.run("inventory_summary", {}).catch(() => null);
+            const rows = Array.isArray(summaryRes?.data?.rows)
+                ? summaryRes.data.rows
+                : Array.isArray(summaryRes?.data)
+                    ? summaryRes.data
+                    : [];
+            const matchedRow = rows.find((row: any) =>
+                String(row.itemName || "").toLowerCase() === String(item.name || "").toLowerCase() ||
+                String(row.sku || "").toLowerCase() === String(item.sku || "").toLowerCase()
+            );
+            setInventorySummary(matchedRow || null);
+        } catch (error) {
+            console.warn("Failed to refresh item inventory summary", error);
+        }
+    };
+
     // Fetch reorder notification setting
     useEffect(() => {
         const fetchSettings = async (forceRefresh = false) => {
@@ -249,31 +291,7 @@ export default function ItemDetails({
     }, []);
 
     useEffect(() => {
-        const hydrateItemDetails = async () => {
-            if (!itemId) return;
-            try {
-                const response = await itemsAPI.getById(itemId);
-                const latestItem = response?.data || response;
-                if (!latestItem || typeof latestItem !== "object") return;
-
-                const normalizedItem = {
-                    ...latestItem,
-                    id: latestItem.id || latestItem._id || itemId,
-                    _id: latestItem._id || latestItem.id || itemId,
-                };
-
-                setItems((prev) =>
-                    prev.map((existing) => {
-                        const existingId = String(existing.id || existing._id || "").trim();
-                        return existingId === itemId ? { ...existing, ...normalizedItem } : existing;
-                    })
-                );
-            } catch (error) {
-                console.warn("Failed to hydrate item detail record", error);
-            }
-        };
-
-        void hydrateItemDetails();
+        void refreshItemCoreData();
     }, [itemId, setItems]);
 
     useEffect(() => {
@@ -316,6 +334,26 @@ export default function ItemDetails({
 
         void loadLocationAndSummary();
     }, [activeTab, item.name, item.sku]);
+
+    useEffect(() => {
+        const handlePurchaseSideRefresh = () => {
+            void refreshItemCoreData();
+            void refreshInventorySummary();
+            if (activeTab === "transactions") {
+                void fetchTransactions();
+            }
+        };
+
+        window.addEventListener("itemsUpdated", handlePurchaseSideRefresh);
+        window.addEventListener("billsUpdated", handlePurchaseSideRefresh);
+        window.addEventListener("paymentsUpdated", handlePurchaseSideRefresh);
+
+        return () => {
+            window.removeEventListener("itemsUpdated", handlePurchaseSideRefresh);
+            window.removeEventListener("billsUpdated", handlePurchaseSideRefresh);
+            window.removeEventListener("paymentsUpdated", handlePurchaseSideRefresh);
+        };
+    }, [activeTab, itemId, item.name, item.sku]);
 
     const getFirstAvailableValue = (source: any, fields: string[]) => {
         for (const field of fields) {

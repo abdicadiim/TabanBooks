@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import toast from "react-hot-toast";
 import { useNavigate, useParams } from "react-router-dom";
 import { saveBudget, getBudgetById, getAccounts } from "./accountantModel";
 import {
@@ -65,7 +66,7 @@ function NewBudget() {
   const [selectedLiabilityAccounts, setSelectedLiabilityAccounts] = useState<string[]>([]);
   const [selectedEquityAccounts, setSelectedEquityAccounts] = useState<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalAccountType, setModalAccountType] = useState<string | null>(null); // "income", "expense", "asset", "liability", "equity"
+  const [modalAccountType, setModalAccountType] = useState<string | null>(null);
   const [modalSelectedAccounts, setModalSelectedAccounts] = useState<string[]>([]);
   const [accountSearchTerm, setAccountSearchTerm] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
@@ -79,7 +80,10 @@ function NewBudget() {
   const fiscalYearRef = useRef<HTMLDivElement>(null);
   const budgetPeriodRef = useRef<HTMLDivElement>(null);
 
-  // Load budget data if editing
+  // Validation states
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     const loadBudget = async () => {
       if (isEditMode && id) {
@@ -112,10 +116,9 @@ function NewBudget() {
     loadBudget();
   }, [id, isEditMode]);
 
-  // Load accounts from backend
   useEffect(() => {
     const fetchAccounts = async () => {
-      const response = await getAccounts({ limit: 1000 }); // Get all for selection
+      const response = await getAccounts({ limit: 1000 });
       if (response && response.success) {
         setAllAccounts(response.data);
       }
@@ -133,32 +136,19 @@ function NewBudget() {
 
   const budgetPeriods = ["Monthly", "Quarterly", "Half-yearly", "Yearly"];
 
-  const accounts = allAccounts;
-  const incomeAccounts = accounts.filter(acc => acc.accountType === "income");
-  const expenseAccounts = accounts.filter(acc => acc.accountType === "expense");
-
-  // Group accounts by type for modal display with hierarchical structure
   const getGroupedAccounts = () => {
-    // Filter accounts based on modalAccountType
     const filteredAccounts = allAccounts.filter(acc => {
       const type = (acc.accountType || acc.type || "").toLowerCase();
       const modalTypeLower = (modalAccountType || "").toLowerCase();
       
-      if (modalTypeLower === "income") {
-        return type.includes("income");
-      } else if (modalTypeLower === "expense") {
-        return type.includes("expense") || type.includes("cost of goods sold");
-      } else if (modalTypeLower === "asset") {
-        return type.includes("asset") || type.includes("receivable") || type.includes("cash") || type.includes("bank");
-      } else if (modalTypeLower === "liability") {
-        return type.includes("liability") || type.includes("payable") || type.includes("credit card");
-      } else if (modalTypeLower === "equity") {
-        return type.includes("equity");
-      }
+      if (modalTypeLower === "income") return type.includes("income");
+      if (modalTypeLower === "expense") return type.includes("expense") || type.includes("cost of goods sold");
+      if (modalTypeLower === "asset") return type.includes("asset") || type.includes("receivable") || type.includes("cash") || type.includes("bank");
+      if (modalTypeLower === "liability") return type.includes("liability") || type.includes("payable") || type.includes("credit card");
+      if (modalTypeLower === "equity") return type.includes("equity");
       return true;
     });
 
-    // Grouping logic
     const grouped: any = {};
     const modalType = modalAccountType || "Other";
     
@@ -197,77 +187,28 @@ function NewBudget() {
         if (!grouped["Equity"][type]) grouped["Equity"][type] = [];
         grouped["Equity"][type].push(acc);
       });
-    } else {
-      filteredAccounts.forEach(acc => {
-        const type = acc.accountType || acc.type || "Other";
-        if (!grouped[type]) grouped[type] = [];
-        grouped[type].push(acc);
-      });
     }
 
     return grouped;
   };
 
   const toggleCategory = (categoryPath: string) => {
-    setExpandedCategories(prev => ({
-      ...prev,
-      [categoryPath]: !prev[categoryPath]
-    }));
+    setExpandedCategories(prev => ({ ...prev, [categoryPath]: !prev[categoryPath] }));
   };
 
   const handleOpenModal = (type: string) => {
-    setModalAccountType(type);
+    const typeUpper = type.charAt(0).toUpperCase() + type.slice(1);
+    setModalAccountType(typeUpper);
     let currentSelected: string[] = [];
-    if (type === "Income") {
-      currentSelected = selectedIncomeAccounts;
-    } else if (type === "Expense") {
-      currentSelected = selectedExpenseAccounts;
-    } else if (type === "Asset") {
-      currentSelected = selectedAssetAccounts;
-    } else if (type === "Liability") {
-      currentSelected = selectedLiabilityAccounts;
-    } else if (type === "Equity") {
-      currentSelected = selectedEquityAccounts;
-    }
+    if (typeUpper === "Income") currentSelected = selectedIncomeAccounts;
+    else if (typeUpper === "Expense") currentSelected = selectedExpenseAccounts;
+    else if (typeUpper === "Asset") currentSelected = selectedAssetAccounts;
+    else if (typeUpper === "Liability") currentSelected = selectedLiabilityAccounts;
+    else if (typeUpper === "Equity") currentSelected = selectedEquityAccounts;
+    
     setModalSelectedAccounts([...currentSelected]);
     setAccountSearchTerm("");
-    // Initialize all categories as expanded
-    if (type === "Income") {
-      setExpandedCategories({
-        "Income": true,
-        "Income:Income": true,
-        "Income:Other Income": true
-      });
-    } else if (type === "Expense") {
-      setExpandedCategories({
-        "Expense": true,
-        "Expense:Cost Of Goods Sold": true
-      });
-    } else if (type === "Asset") {
-      setExpandedCategories({
-        "Assets": true,
-        "Assets:Current Assets": true,
-        "Assets:Current Assets:Accounts Receivable": true,
-        "Assets:Current Assets:Other current assets": true,
-        "Assets:Current Assets:Cash and Cash Equivalent": true,
-        "Assets:Current Assets:Cash and Cash Equivalent:Cash": true,
-        "Assets:Current Assets:Cash and Cash Equivalent:Bank": true,
-        "Assets:Other Assets": true,
-        "Assets:Fixed Assets": true
-      });
-    } else if (type === "Liability") {
-      setExpandedCategories({
-        "Liabilities": true,
-        "Liabilities:Current Liabilities": true,
-        "Liabilities:Long Term Liabilities": true,
-        "Liabilities:Other Liabilities": true
-      });
-    } else if (type === "Equity") {
-      setExpandedCategories({
-        "Equities": true,
-        "Equities:Equities": true
-      });
-    }
+    setExpandedCategories({ [typeUpper === "Income" ? "Income" : typeUpper === "Expense" ? "Expense" : typeUpper === "Asset" ? "Assets" : typeUpper === "Liability" ? "Liabilities" : "Equity"]: true });
     setIsModalOpen(true);
   };
 
@@ -279,107 +220,59 @@ function NewBudget() {
   };
 
   const handleToggleAccount = (accountName: string) => {
-    setModalSelectedAccounts(prev => {
-      if (prev.includes(accountName)) {
-        return prev.filter(name => name !== accountName);
-      } else {
-        return [...prev, accountName];
-      }
-    });
+    setModalSelectedAccounts(prev => 
+      prev.includes(accountName) ? prev.filter(name => name !== accountName) : [...prev, accountName]
+    );
   };
 
   const handleSelectAll = () => {
-    const filtered = getFilteredAccounts();
+    const filtered = getFilteredAccountsForModal();
     const allNames = filtered.map(acc => acc.accountName || acc.name || "").filter(Boolean);
     setModalSelectedAccounts(allNames);
   };
 
-  const getFilteredAccounts = (): any[] => {
+  const getFilteredAccountsForModal = (): any[] => {
     const grouped = getGroupedAccounts();
     const accountsList: any[] = [];
-
     const extractAccounts = (data: any) => {
       if (Array.isArray(data)) {
         data.forEach(acc => {
           const name = acc.accountName || acc.name || "";
           const code = acc.accountCode || acc.code || "";
-          if (accountSearchTerm === "" ||
-            name.toLowerCase().includes(accountSearchTerm.toLowerCase()) ||
-            code.toLowerCase().includes(accountSearchTerm.toLowerCase())) {
+          if (accountSearchTerm === "" || name.toLowerCase().includes(accountSearchTerm.toLowerCase()) || code.toLowerCase().includes(accountSearchTerm.toLowerCase())) {
             accountsList.push(acc);
           }
         });
       } else if (typeof data === 'object' && data !== null) {
-        Object.keys(data).forEach(key => {
-          extractAccounts(data[key]);
-        });
+        Object.keys(data).forEach(key => extractAccounts(data[key]));
       }
     };
-
-    Object.keys(grouped).forEach(key => {
-      extractAccounts(grouped[key]);
-    });
-
+    Object.keys(grouped).forEach(key => extractAccounts(grouped[key]));
     return accountsList;
   };
 
   const handleUpdateAccounts = () => {
-    if (modalAccountType === "Income") {
-      setSelectedIncomeAccounts([...modalSelectedAccounts]);
-    } else if (modalAccountType === "Expense") {
-      setSelectedExpenseAccounts([...modalSelectedAccounts]);
-    } else if (modalAccountType === "Asset") {
-      setSelectedAssetAccounts([...modalSelectedAccounts]);
-    } else if (modalAccountType === "Liability") {
-      setSelectedLiabilityAccounts([...modalSelectedAccounts]);
-    } else if (modalAccountType === "Equity") {
-      setSelectedEquityAccounts([...modalSelectedAccounts]);
-    }
+    if (modalAccountType === "Income") setSelectedIncomeAccounts([...modalSelectedAccounts]);
+    else if (modalAccountType === "Expense") setSelectedExpenseAccounts([...modalSelectedAccounts]);
+    else if (modalAccountType === "Asset") setSelectedAssetAccounts([...modalSelectedAccounts]);
+    else if (modalAccountType === "Liability") setSelectedLiabilityAccounts([...modalSelectedAccounts]);
+    else if (modalAccountType === "Equity") setSelectedEquityAccounts([...modalSelectedAccounts]);
     handleCloseModal();
   };
 
-
-  // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (fiscalYearRef.current && !fiscalYearRef.current.contains(event.target as Node)) {
-        setIsFiscalYearOpen(false);
-      }
-      if (budgetPeriodRef.current && !budgetPeriodRef.current.contains(event.target as Node)) {
-        setIsBudgetPeriodOpen(false);
-      }
+      if (fiscalYearRef.current && !fiscalYearRef.current.contains(event.target as Node)) setIsFiscalYearOpen(false);
+      if (budgetPeriodRef.current && !budgetPeriodRef.current.contains(event.target as Node)) setIsBudgetPeriodOpen(false);
     }
-
-    if (isFiscalYearOpen || isBudgetPeriodOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    if (isFiscalYearOpen || isBudgetPeriodOpen) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isFiscalYearOpen, isBudgetPeriodOpen]);
-
-  const getFilteredFiscalYears = () => {
-    const searchTerm = fiscalYearSearch.toLowerCase();
-    return fiscalYears.filter(year => year.toLowerCase().includes(searchTerm));
-  };
-
-  const getFilteredBudgetPeriods = () => {
-    const searchTerm = budgetPeriodSearch.toLowerCase();
-    return budgetPeriods.filter(period => period.toLowerCase().includes(searchTerm));
-  };
-
-  // Validation states
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   const validateField = (name: string, value: string) => {
     const newErrors = { ...errors };
-    if (!value || value.trim() === "") {
-      newErrors[name] = "This field is required";
-    } else {
-      delete newErrors[name];
-    }
+    if (!value || value.trim() === "") newErrors[name] = "This field is required";
+    else delete newErrors[name];
     setErrors(newErrors);
   };
 
@@ -388,87 +281,67 @@ function NewBudget() {
     validateField(name, value);
   };
 
+  const getFilteredFiscalYears = () => fiscalYears.filter(year => year.toLowerCase().includes(fiscalYearSearch.toLowerCase()));
+  const getFilteredBudgetPeriods = () => budgetPeriods.filter(period => period.toLowerCase().includes(budgetPeriodSearch.toLowerCase()));
+
   return (
     <div style={{
+      padding: "32px",
       minHeight: "100vh",
-      backgroundColor: "white",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "flex-start",
-      padding: "0"
+      backgroundColor: "#f9fafb",
+      fontFamily: "'Inter', sans-serif"
     }}>
       <div style={{
-        width: "100%",
         maxWidth: "1000px",
-        display: "flex",
-        flexDirection: "column",
-        position: "relative"
+        margin: "0 auto",
+        backgroundColor: "white",
+        borderRadius: "20px",
+        boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)",
+        overflow: "hidden"
       }}>
         {/* Header */}
         <div style={{
+          padding: "32px",
+          borderBottom: "1px solid #f3f4f6",
           display: "flex",
-          alignItems: "center",
           justifyContent: "space-between",
-          padding: "24px 32px",
-          borderBottom: "1px solid #f3f4f6"
+          alignItems: "center"
         }}>
-          <h1 style={{
-            fontSize: "24px",
-            fontWeight: "500",
-            color: "#111827",
-            margin: 0
-          }}>
-            New Budget
-          </h1>
-
-          <button
-            onClick={() => navigate("/accountant/budgets")}
-            style={{
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              padding: "8px",
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#9ca3af",
-              transition: "all 0.2s"
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "#fee2e2";
-              e.currentTarget.style.color = "#ef4444";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "#9ca3af";
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <button
+              onClick={() => navigate("/accountant/budgets")}
+              style={{
+                backgroundColor: "#f3f4f6",
+                border: "none",
+                borderRadius: "10px",
+                padding: "8px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#6b7280"
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+            </button>
+            <h1 style={{ fontSize: "24px", fontWeight: "800", color: "#111827", margin: 0 }}>
+              {isEditMode ? "Edit Budget" : "New Budget"}
+            </h1>
+          </div>
         </div>
 
         {/* Form Body */}
-        <div style={{
-          padding: "40px 32px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "24px"
-        }}>
-          
-          {/* Name Field */}
-          <div style={{ display: "flex", alignItems: "flex-start" }}>
-            <div style={{ width: "140px", paddingTop: "10px" }}>
-              <label style={{ fontSize: "13px", fontWeight: "500", color: "#e11d48" }}>
-                Name*
-              </label>
-            </div>
-            <div style={{ flex: 1 }}>
+        <div style={{ padding: "40px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px", marginBottom: "40px" }}>
+            {/* Budget Name */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <label style={{ fontSize: "14px", fontWeight: "600", color: "#374151" }}>Budget Name <span style={{ color: "#ef4444" }}>*</span></label>
               <input
                 type="text"
+                placeholder="E.g. Annual Budget 2025"
                 value={formData.name}
                 onChange={(e) => {
                   setFormData(prev => ({ ...prev, name: e.target.value }));
@@ -476,376 +349,290 @@ function NewBudget() {
                 }}
                 onBlur={(e) => handleBlur("name", e.target.value)}
                 style={{
-                  width: "100%",
-                  maxWidth: "400px",
-                  padding: "8px 12px",
-                  border: errors.name && touched.name ? "1px solid #ef4444" : "1px solid #d1d5db",
-                  borderRadius: "4px",
-                  fontSize: "14px",
-                  outline: "none"
+                  padding: "12px 16px",
+                  border: errors.name && touched.name ? "1px solid #ef4444" : "1px solid #e5e7eb",
+                  borderRadius: "12px",
+                  fontSize: "15px",
+                  outline: "none",
+                  transition: "all 0.2s"
                 }}
               />
-              <div style={{ marginTop: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#156372" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
-                  <line x1="7" y1="7" x2="7.01" y2="7"></line>
-                </svg>
-                <a href="#" onClick={(e) => e.preventDefault()} style={{ fontSize: "13px", color: "#156372", textDecoration: "none" }}>
-                  Create this budget for a specific reporting tag
-                </a>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+              {errors.name && touched.name && <span style={{ fontSize: "12px", color: "#ef4444" }}>{errors.name}</span>}
+            </div>
+
+            {/* Fiscal Year */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }} ref={fiscalYearRef}>
+              <label style={{ fontSize: "14px", fontWeight: "600", color: "#374151" }}>Fiscal Year <span style={{ color: "#ef4444" }}>*</span></label>
+              <div style={{ position: "relative" }}>
+                <div
+                  onClick={() => setIsFiscalYearOpen(!isFiscalYearOpen)}
+                  style={{
+                    padding: "12px 16px",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "12px",
+                    fontSize: "15px",
+                    backgroundColor: "white",
+                    cursor: "pointer",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center"
+                  }}
+                >
+                  <span>{formData.fiscalYear}</span>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: isFiscalYearOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+                    <path d="M6 9l6 6 6-6"></path>
+                  </svg>
+                </div>
+                {isFiscalYearOpen && (
+                  <div style={{
+                    position: "absolute",
+                    top: "calc(100% + 8px)",
+                    left: 0,
+                    right: 0,
+                    backgroundColor: "white",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "12px",
+                    boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                    zIndex: 50,
+                    maxHeight: "240px",
+                    overflowY: "auto"
+                  }}>
+                    {fiscalYears.map(year => (
+                      <div
+                        key={year}
+                        onClick={() => {
+                          setFormData(prev => ({ ...prev, fiscalYear: year }));
+                          setIsFiscalYearOpen(false);
+                        }}
+                        style={{
+                          padding: "12px 16px",
+                          cursor: "pointer",
+                          fontSize: "14px",
+                          backgroundColor: formData.fiscalYear === year ? "#f0fdfa" : "transparent",
+                          color: formData.fiscalYear === year ? "#156372" : "#374151"
+                        }}
+                      >
+                        {year}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Fiscal Year Field */}
-          <div style={{ display: "flex", alignItems: "flex-start" }}>
-            <div style={{ width: "140px", paddingTop: "10px" }}>
-              <label style={{ fontSize: "13px", fontWeight: "500", color: "#e11d48" }}>
-                Fiscal Year*
-              </label>
-            </div>
-            <div style={{ flex: 1, position: "relative" }} ref={fiscalYearRef}>
-              <div
-                onClick={() => setIsFiscalYearOpen(!isFiscalYearOpen)}
-                style={{
-                  width: "100%",
-                  maxWidth: "400px",
-                  padding: "8px 12px",
-                  border: "1px solid #d1d5db",
-                  borderRadius: "4px",
-                  fontSize: "14px",
-                  backgroundColor: "white",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between"
-                }}
-              >
-                <span>{formData.fiscalYear}</span>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ transform: isFiscalYearOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
-                  <path d="M3.5 5.25l3.5 3.5 3.5-3.5" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px", marginBottom: "40px" }}>
+            {/* Budget Period */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }} ref={budgetPeriodRef}>
+              <label style={{ fontSize: "14px", fontWeight: "600", color: "#374151" }}>Budget Period <span style={{ color: "#ef4444" }}>*</span></label>
+              <div style={{ position: "relative" }}>
+                <div
+                  onClick={() => setIsBudgetPeriodOpen(!isBudgetPeriodOpen)}
+                  style={{
+                    padding: "12px 16px",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "12px",
+                    fontSize: "15px",
+                    backgroundColor: "white",
+                    cursor: "pointer",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center"
+                  }}
+                >
+                  <span>{formData.budgetPeriod}</span>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: isBudgetPeriodOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+                    <path d="M6 9l6 6 6-6"></path>
+                  </svg>
+                </div>
+                {isBudgetPeriodOpen && (
+                  <div style={{
+                    position: "absolute",
+                    top: "calc(100% + 8px)",
+                    left: 0,
+                    right: 0,
+                    backgroundColor: "white",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "12px",
+                    boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                    zIndex: 50
+                  }}>
+                    {budgetPeriods.map(period => (
+                      <div
+                        key={period}
+                        onClick={() => {
+                          setFormData(prev => ({ ...prev, budgetPeriod: period }));
+                          setIsBudgetPeriodOpen(false);
+                        }}
+                        style={{
+                          padding: "12px 16px",
+                          cursor: "pointer",
+                          fontSize: "14px",
+                          backgroundColor: formData.budgetPeriod === period ? "#f0fdfa" : "transparent",
+                          color: formData.budgetPeriod === period ? "#156372" : "#374151"
+                        }}
+                      >
+                        {period}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              {isFiscalYearOpen && (
-                <div style={{
-                  position: "absolute",
-                  top: "100%",
-                  width: "100%",
-                  maxWidth: "400px",
-                  marginTop: "4px",
-                  backgroundColor: "white",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "8px",
-                  boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                  zIndex: 100,
-                  maxHeight: "240px",
-                  overflowY: "auto"
-                }}>
-                  {fiscalYears.map(year => (
-                    <div
-                      key={year}
-                      onClick={() => {
-                        setFormData(prev => ({ ...prev, fiscalYear: year }));
-                        setIsFiscalYearOpen(false);
-                      }}
-                      style={{
-                        padding: "10px 14px",
-                        cursor: "pointer",
-                        fontSize: "14px",
-                        backgroundColor: formData.fiscalYear === year ? "#f0fdfa" : "transparent",
-                        color: formData.fiscalYear === year ? "#156372" : "#374151"
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f9fafb"}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = formData.fiscalYear === year ? "#f0fdfa" : "transparent"}
-                    >
-                      {year}
+            </div>
+
+            {/* Reporting Tag Option */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <label style={{ fontSize: "14px", fontWeight: "600", color: "#374151", display: "flex", alignItems: "center", gap: "8px" }}>
+                <input
+                  type="checkbox"
+                  checked={createForReportingTag}
+                  onChange={(e) => setCreateForReportingTag(e.target.checked)}
+                  style={{ width: "16px", height: "16px" }}
+                />
+                Create for a reporting tag
+              </label>
+              {createForReportingTag && (
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <input
+                    type="text"
+                    placeholder="Tag Name"
+                    value={reportingTagName}
+                    onChange={(e) => setReportingTagName(e.target.value)}
+                    style={{ flex: 1, padding: "10px 12px", border: "1px solid #e5e7eb", borderRadius: "8px", fontSize: "14px" }}
+                  />
+                  <select
+                    value={reportingTagOption}
+                    onChange={(e) => setReportingTagOption(e.target.value)}
+                    style={{ padding: "10px 12px", border: "1px solid #e5e7eb", borderRadius: "8px", fontSize: "14px", backgroundColor: "white" }}
+                  >
+                    <option value="All">All</option>
+                    <option value="Contains">Contains</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: "32px" }}>
+            <h3 style={{ fontSize: "14px", fontWeight: "700", color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "24px" }}>
+              Income and Expense Accounts
+            </h3>
+            
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px" }}>
+              {/* Income Accounts */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <label style={{ fontSize: "14px", fontWeight: "600", color: "#374151" }}>Income Accounts</label>
+                <div style={{ padding: "16px", border: "1px solid #e5e7eb", borderRadius: "16px", minHeight: "100px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                   <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                     {selectedIncomeAccounts.map(acc => (
+                       <span key={acc} style={{ padding: "4px 10px", backgroundColor: "#f3f4f6", borderRadius: "6px", fontSize: "13px", color: "#374151" }}>{acc}</span>
+                     ))}
+                   </div>
+                   <button
+                    onClick={() => handleOpenModal("Income")}
+                    style={{ alignSelf: "flex-start", padding: "6px 12px", border: "1px dashed #3b82f6", borderRadius: "8px", backgroundColor: "transparent", color: "#3b82f6", fontSize: "13px", fontWeight: "600", cursor: "pointer" }}
+                   >
+                     Add/Remove Accounts
+                   </button>
+                </div>
+              </div>
+
+              {/* Expense Accounts */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <label style={{ fontSize: "14px", fontWeight: "600", color: "#374151" }}>Expense Accounts</label>
+                <div style={{ padding: "16px", border: "1px solid #e5e7eb", borderRadius: "16px", minHeight: "100px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                   <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                     {selectedExpenseAccounts.map(acc => (
+                       <span key={acc} style={{ padding: "4px 10px", backgroundColor: "#f3f4f6", borderRadius: "6px", fontSize: "13px", color: "#374151" }}>{acc}</span>
+                     ))}
+                   </div>
+                   <button
+                    onClick={() => handleOpenModal("Expense")}
+                    style={{ alignSelf: "flex-start", padding: "6px 12px", border: "1px dashed #3b82f6", borderRadius: "8px", backgroundColor: "transparent", color: "#3b82f6", fontSize: "13px", fontWeight: "600", cursor: "pointer" }}
+                   >
+                     Add/Remove Accounts
+                   </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: "40px" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", marginBottom: "24px" }}>
+              <input
+                type="checkbox"
+                checked={includeAssetLiabilityEquity}
+                onChange={(e) => setIncludeAssetLiabilityEquity(e.target.checked)}
+                style={{ width: "18px", height: "18px" }}
+              />
+              <span style={{ fontSize: "15px", color: "#111827", fontWeight: "500" }}>Include Asset, Liability, and Equity Accounts</span>
+            </label>
+
+            {includeAssetLiabilityEquity && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "24px" }}>
+                {/* Asset Accounts */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <label style={{ fontSize: "14px", fontWeight: "600", color: "#374151" }}>Asset Accounts</label>
+                  <div style={{ padding: "12px", border: "1px solid #e5e7eb", borderRadius: "12px", minHeight: "80px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                      {selectedAssetAccounts.slice(0, 3).map(acc => <span key={acc} style={{ fontSize: "12px", color: "#6b7280" }}>• {acc}</span>)}
+                      {selectedAssetAccounts.length > 3 && <span style={{ fontSize: "12px", color: "#3b82f6" }}>+{selectedAssetAccounts.length - 3} more</span>}
                     </div>
-                  ))}
+                    <button onClick={() => handleOpenModal("Asset")} style={{ alignSelf: "flex-start", fontSize: "12px", color: "#3b82f6", border: "none", background: "none", fontWeight: "600", cursor: "pointer", padding: 0 }}>Configure</button>
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Budget Period Field */}
-          <div style={{ display: "flex", alignItems: "flex-start" }}>
-            <div style={{ width: "140px", paddingTop: "10px" }}>
-              <label style={{ fontSize: "13px", fontWeight: "500", color: "#e11d48" }}>
-                Budget Period*
-              </label>
-            </div>
-            <div style={{ flex: 1, position: "relative" }} ref={budgetPeriodRef}>
-              <div
-                onClick={() => setIsBudgetPeriodOpen(!isBudgetPeriodOpen)}
-                style={{
-                  width: "100%",
-                  maxWidth: "400px",
-                  padding: "8px 12px",
-                  border: "1px solid #d1d5db",
-                  borderRadius: "4px",
-                  fontSize: "14px",
-                  backgroundColor: "white",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between"
-                }}
-              >
-                <span>{formData.budgetPeriod}</span>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ transform: isBudgetPeriodOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
-                  <path d="M3.5 5.25l3.5 3.5 3.5-3.5" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </div>
-              {isBudgetPeriodOpen && (
-                <div style={{
-                  position: "absolute",
-                  top: "100%",
-                  width: "100%",
-                  maxWidth: "400px",
-                  marginTop: "4px",
-                  backgroundColor: "white",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "8px",
-                  boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                  zIndex: 100
-                }}>
-                  {budgetPeriods.map(period => (
-                    <div
-                      key={period}
-                      onClick={() => {
-                        setFormData(prev => ({ ...prev, budgetPeriod: period }));
-                        setIsBudgetPeriodOpen(false);
-                      }}
-                      style={{
-                        padding: "10px 14px",
-                        cursor: "pointer",
-                        fontSize: "14px",
-                        backgroundColor: formData.budgetPeriod === period ? "#f0fdfa" : "transparent",
-                        color: formData.budgetPeriod === period ? "#156372" : "#374151"
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f9fafb"}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = formData.budgetPeriod === period ? "#f0fdfa" : "transparent"}
-                    >
-                      {period}
+                {/* Liability Accounts */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <label style={{ fontSize: "14px", fontWeight: "600", color: "#374151" }}>Liability Accounts</label>
+                  <div style={{ padding: "12px", border: "1px solid #e5e7eb", borderRadius: "12px", minHeight: "80px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                      {selectedLiabilityAccounts.slice(0, 3).map(acc => <span key={acc} style={{ fontSize: "12px", color: "#6b7280" }}>• {acc}</span>)}
+                      {selectedLiabilityAccounts.length > 3 && <span style={{ fontSize: "12px", color: "#3b82f6" }}>+{selectedLiabilityAccounts.length - 3} more</span>}
                     </div>
-                  ))}
+                    <button onClick={() => handleOpenModal("Liability")} style={{ alignSelf: "flex-start", fontSize: "12px", color: "#3b82f6", border: "none", background: "none", fontWeight: "600", cursor: "pointer", padding: 0 }}>Configure</button>
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Location Field */}
-          <div style={{ display: "flex", alignItems: "flex-start" }}>
-            <div style={{ width: "140px", paddingTop: "10px" }}>
-              <label style={{ fontSize: "13px", fontWeight: "500", color: "#374151" }}>
-                Location
-              </label>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div
-                style={{
-                  width: "100%",
-                  maxWidth: "400px",
-                  padding: "8px 12px",
-                  border: "1px solid #d1d5db",
-                  borderRadius: "4px",
-                  fontSize: "14px",
-                  backgroundColor: "white",
-                  color: "#9ca3af",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between"
-                }}
-              >
-                <span>Location</span>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M3.5 5.25l3.5 3.5 3.5-3.5" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ fontSize: "11px", color: "#9ca3af", fontWeight: "600", marginTop: "12px", marginBottom: "4px" }}>
-            ZB.ACCOUNT.PLACCOUNTS
-          </div>
-
-          {/* Income Accounts Section */}
-          <div style={{ display: "flex", alignItems: "flex-start" }}>
-            <div style={{ width: "140px", paddingTop: "10px" }}>
-              <label style={{ fontSize: "13px", fontWeight: "500", color: "#374151" }}>
-                Income Accounts
-              </label>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div 
-                onClick={() => handleOpenModal("Income")}
-                style={{
-                  width: "100%",
-                  maxWidth: "400px",
-                  padding: "10px 14px",
-                  border: "1px dashed #d1d5db",
-                  borderRadius: "4px",
-                  backgroundColor: "white",
-                  cursor: "pointer"
-                }}
-              >
-                <span style={{ fontSize: "13px", color: "#156372" }}>Add Accounts</span>
-              </div>
-              {selectedIncomeAccounts.length > 0 && (
-                <div style={{ fontSize: "12px", color: "#156372", marginTop: "4px", fontWeight: "500" }}>
-                  {selectedIncomeAccounts.length} accounts selected
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Expense Accounts Section */}
-          <div style={{ display: "flex", alignItems: "flex-start" }}>
-            <div style={{ width: "140px", paddingTop: "10px" }}>
-              <label style={{ fontSize: "13px", fontWeight: "500", color: "#374151" }}>
-                Expense Accounts
-              </label>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div 
-                onClick={() => handleOpenModal("Expense")}
-                style={{
-                  width: "100%",
-                  maxWidth: "400px",
-                  padding: "10px 14px",
-                  border: "1px dashed #d1d5db",
-                  borderRadius: "4px",
-                  backgroundColor: "white",
-                  cursor: "pointer"
-                }}
-              >
-                <span style={{ fontSize: "13px", color: "#156372" }}>Add Accounts</span>
-              </div>
-              {selectedExpenseAccounts.length > 0 && (
-                <div style={{ fontSize: "12px", color: "#156372", marginTop: "4px", fontWeight: "500" }}>
-                  {selectedExpenseAccounts.length} accounts selected
-                </div>
-              )}
-            </div>
-          </div>
-
-          {!includeAssetLiabilityEquity ? (
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "12px" }}>
-              <button 
-                onClick={() => setIncludeAssetLiabilityEquity(true)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  padding: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  cursor: "pointer",
-                  color: "#156372",
-                  fontSize: "13px"
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="#156372" stroke="none">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="12" y1="8" x2="12" y2="16" stroke="white" strokeWidth="2"></line>
-                  <line x1="8" y1="12" x2="16" y2="12" stroke="white" strokeWidth="2"></line>
-                </svg>
-                Include Asset, Liability, and Equity Accounts in Budget
-              </button>
-            </div>
-          ) : (
-            <>
-              <div style={{ fontSize: "11px", color: "#9ca3af", fontWeight: "600", marginTop: "24px", marginBottom: "4px" }}>
-                ASSET, LIABILITY, AND EQUITY ACCOUNTS
-              </div>
-
-              {/* Asset Accounts Section */}
-              <div style={{ display: "flex", alignItems: "flex-start" }}>
-                <div style={{ width: "140px", paddingTop: "10px" }}>
-                  <label style={{ fontSize: "13px", fontWeight: "500", color: "#374151" }}>
-                    Asset Accounts
-                  </label>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div 
-                    onClick={() => handleOpenModal("Asset")}
-                    style={{
-                      width: "100%",
-                      maxWidth: "400px",
-                      padding: "10px 14px",
-                      border: "1px dashed #d1d5db",
-                      borderRadius: "4px",
-                      backgroundColor: "white",
-                      cursor: "pointer"
-                    }}
-                  >
-                    <span style={{ fontSize: "13px", color: "#156372" }}>Add Accounts</span>
+                {/* Equity Accounts */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <label style={{ fontSize: "14px", fontWeight: "600", color: "#374151" }}>Equity Accounts</label>
+                  <div style={{ padding: "12px", border: "1px solid #e5e7eb", borderRadius: "12px", minHeight: "80px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                      {selectedEquityAccounts.slice(0, 3).map(acc => <span key={acc} style={{ fontSize: "12px", color: "#6b7280" }}>• {acc}</span>)}
+                      {selectedEquityAccounts.length > 3 && <span style={{ fontSize: "12px", color: "#3b82f6" }}>+{selectedEquityAccounts.length - 3} more</span>}
+                    </div>
+                    <button onClick={() => handleOpenModal("Equity")} style={{ alignSelf: "flex-start", fontSize: "12px", color: "#3b82f6", border: "none", background: "none", fontWeight: "600", cursor: "pointer", padding: 0 }}>Configure</button>
                   </div>
                 </div>
               </div>
-
-              {/* Liability Accounts Section */}
-              <div style={{ display: "flex", alignItems: "flex-start" }}>
-                <div style={{ width: "140px", paddingTop: "10px" }}>
-                  <label style={{ fontSize: "13px", fontWeight: "500", color: "#374151" }}>
-                    Liability Accounts
-                  </label>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div 
-                    onClick={() => handleOpenModal("Liability")}
-                    style={{
-                      width: "100%",
-                      maxWidth: "400px",
-                      padding: "10px 14px",
-                      border: "1px dashed #d1d5db",
-                      borderRadius: "4px",
-                      backgroundColor: "white",
-                      cursor: "pointer"
-                    }}
-                  >
-                    <span style={{ fontSize: "13px", color: "#156372" }}>Add Accounts</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Equity Accounts Section */}
-              <div style={{ display: "flex", alignItems: "flex-start" }}>
-                <div style={{ width: "140px", paddingTop: "10px" }}>
-                  <label style={{ fontSize: "13px", fontWeight: "500", color: "#374151" }}>
-                    Equity Accounts
-                  </label>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div 
-                    onClick={() => handleOpenModal("Equity")}
-                    style={{
-                      width: "100%",
-                      maxWidth: "400px",
-                      padding: "10px 14px",
-                      border: "1px dashed #d1d5db",
-                      borderRadius: "4px",
-                      backgroundColor: "white",
-                      cursor: "pointer"
-                    }}
-                  >
-                    <span style={{ fontSize: "13px", color: "#156372" }}>Add Accounts</span>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
+            )}
+          </div>
         </div>
 
-        {/* Footer */}
+        {/* Footer Actions */}
         <div style={{
+          padding: "32px 40px",
+          backgroundColor: "#f9fafb",
+          borderTop: "1px solid #f3f4f6",
           display: "flex",
-          alignItems: "center",
-          gap: "12px",
-          padding: "24px 32px",
-          borderTop: "1px solid #f3f4f6"
+          justifyContent: "flex-end",
+          gap: "16px"
         }}>
+          <button
+            onClick={() => navigate("/accountant/budgets")}
+            style={{
+              padding: "12px 24px",
+              backgroundColor: "white",
+              border: "1px solid #e5e7eb",
+              borderRadius: "12px",
+              fontSize: "15px",
+              fontWeight: "600",
+              color: "#4b5563",
+              cursor: "pointer",
+              transition: "all 0.2s"
+            }}
+          >
+            Cancel
+          </button>
           <button
             onClick={async () => {
               if (!formData.name) {
@@ -853,9 +640,24 @@ function NewBudget() {
                 setTouched({ name: true });
                 return;
               }
-              const success = await saveBudget({
-                ...formData,
-                includeAssetLiabilityEquity,
+              const { startDate, endDate, startYear } = parseFiscalYear(formData.fiscalYear);
+              const periods = getPeriods(formData.budgetPeriod as any, formData.fiscalYear);
+              const generatedLines = buildLinesFromSelections({
+                periods,
+                income: selectedIncomeAccounts,
+                expense: selectedExpenseAccounts,
+                asset: selectedAssetAccounts,
+                liability: selectedLiabilityAccounts,
+                equity: selectedEquityAccounts,
+              });
+
+              const budgetData = {
+                ...(originalBudget || {}),
+                name: formData.name,
+                fiscalYear: startYear,
+                fiscalYearLabel: formData.fiscalYear,
+                budgetPeriod: formData.budgetPeriod,
+                includeAssetLiabilityEquity: includeAssetLiabilityEquity,
                 selectedIncomeAccounts,
                 selectedExpenseAccounts,
                 selectedAssetAccounts,
@@ -863,50 +665,40 @@ function NewBudget() {
                 selectedEquityAccounts,
                 createForReportingTag,
                 reportingTagName,
-                reportingTagOption
-              });
+                reportingTagOption,
+                startDate,
+                endDate,
+                lines: (originalBudget as any)?.lines?.length > 0 ? (originalBudget as any).lines : generatedLines,
+              };
+
+              const success = await saveBudget(budgetData);
               if (success) navigate("/accountant/budgets");
+              else toast.error("Failed to save budget.");
             }}
             style={{
-              padding: "8px 16px",
-              backgroundColor: "#156372",
-              color: "white",
+              padding: "12px 32px",
+              background: formData.name ? "linear-gradient(135deg, #156372 0%, #0d4d59 100%)" : "#d1d5db",
               border: "none",
-              borderRadius: "4px",
-              fontSize: "13px",
+              borderRadius: "12px",
+              fontSize: "15px",
               fontWeight: "600",
-              cursor: "pointer"
+              color: "white",
+              cursor: formData.name ? "pointer" : "not-allowed",
+              boxShadow: formData.name ? "0 4px 12px rgba(21, 99, 114, 0.2)" : "none",
+              transition: "all 0.3s"
             }}
           >
-            Create Budget
-          </button>
-          <button
-            onClick={() => navigate("/accountant/budgets")}
-            style={{
-              padding: "8px 16px",
-              backgroundColor: "#f3f4f6",
-              color: "#374151",
-              border: "1px solid #d1d5db",
-              borderRadius: "4px",
-              fontSize: "13px",
-              fontWeight: "600",
-              cursor: "pointer"
-            }}
-          >
-            Cancel
+            {isEditMode ? "Update Budget" : "Create Budget"}
           </button>
         </div>
       </div>
 
-      {/* Account Selection Modal Overlay */}
+      {/* Account Selection Modal */}
       {isModalOpen && (
         <div style={{
           position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0, 0, 0, 0.4)",
+          inset: 0,
+          backgroundColor: "rgba(0,0,0,0.4)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -916,147 +708,85 @@ function NewBudget() {
           <div style={{
             backgroundColor: "white",
             width: "100%",
-            maxWidth: "850px",
-            borderRadius: "4px",
-            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.15)",
+            maxWidth: "700px",
+            borderRadius: "20px",
+            boxShadow: "0 25px 50px -12px rgba(0,0,0,0.15)",
             display: "flex",
             flexDirection: "column",
-            maxHeight: "90vh",
+            maxHeight: "85vh",
             overflow: "hidden"
           }}>
-            {/* Modal Header */}
-            <div style={{ padding: "16px 24px", borderBottom: "1px solid #eee", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ fontSize: "18px", fontWeight: "400", color: "#333", margin: 0 }}>
-                Configure Accounts
-              </h3>
-              <button 
-                onClick={handleCloseModal} 
-                style={{ 
-                  background: "transparent", 
-                  border: "none", 
-                  cursor: "pointer", 
-                  color: "#666", 
-                  padding: "4px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center"
-                }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            <div style={{ padding: "24px", borderBottom: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2 style={{ fontSize: "18px", fontWeight: "700", color: "#111827", margin: 0 }}>Configure {modalAccountType} Accounts</h2>
+              <button onClick={handleCloseModal} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af" }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
               </button>
             </div>
             
-            <div style={{ padding: "0", flex: 1, overflowY: "auto" }}>
-               <div style={{ padding: "20px 24px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <h4 style={{ fontSize: "15px", color: "#333", fontWeight: "400", margin: 0 }}>
-                    <span style={{ color: "#e11d48" }}>*</span>&nbsp;Select Accounts
-                  </h4>
-                  <h4 onClick={handleSelectAll} style={{ fontSize: "14px", color: "#156372", fontWeight: "400", margin: 0, cursor: "pointer" }}>
-                    Select All
-                  </h4>
-               </div>
-
-               <div style={{ padding: "0 24px 20px" }}>
-                 <div style={{ display: "flex", border: "1px solid #ddd", borderRadius: "4px", overflow: "hidden", borderBottomLeftRadius: 0, borderBottomRightRadius: 0, backgroundColor: "white" }}>
-                   <span style={{ backgroundColor: "#f3f4f6", padding: "10px 14px", borderRight: "1px solid #ddd", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                     <svg width="14" height="14" viewBox="0 0 512 512" fill="#888"><path d="M455.2 419.8L385.3 350c25.6-33.5 39.1-74.4 38.2-117.1-1-48.5-20.4-94.1-54.7-128.4-35.3-35.3-82.2-54.7-132.2-54.7h-.2c-50 0-97 19.6-132.3 55-72.5 72.8-72.5 191.2.1 264 24.8 24.8 55.9 42.1 90 50 33.1 7.7 67.6 6.2 99.9-4.2 13.1-4.2 20.3-18.3 16.1-31.5-4.2-13.1-18.3-20.3-31.5-16.1-49.3 15.9-102.6 3.1-139.1-33.5-53.2-53.3-53.3-140-.1-193.4 25.9-25.9 60.3-40.3 96.9-40.3h.1c36.6 0 71 14.2 96.8 40.1 25.1 25.1 39.4 58.5 40.1 94.1.7 35.4-12.1 69.3-36 95.3l-.1.1c-11.6 12.8-11.2 32.3 1 44.5l81.4 81.4c4.9 4.9 11.3 7.3 17.7 7.3 6.4 0 12.8-2.4 17.7-7.3 9.8-9.9 9.8-25.7.1-35.5z"></path></svg>
-                   </span>
-                   <input 
-                    type="text" 
-                    value={accountSearchTerm}
-                    onChange={(e) => setAccountSearchTerm(e.target.value)}
-                    style={{ flex: 1, padding: "10px 14px", border: "none", fontSize: "14px", outline: "none", color: "#333" }}
-                   />
-                 </div>
-
-                 <div style={{ border: "1px solid #ddd", borderTop: "none", height: "400px", overflowY: "auto", backgroundColor: "white" }}>
-                    <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                      {(() => {
-                        const renderNode = (data: any, path: string = "", level: number = 0) => {
-                          if (Array.isArray(data)) {
-                            return data.map((acc, i) => {
-                              const isSelected = modalSelectedAccounts.includes(acc.accountName || acc.name || "");
-                              const matchesSearch = accountSearchTerm === "" || 
-                                (acc.accountName || acc.name || "").toLowerCase().includes(accountSearchTerm.toLowerCase()) ||
-                                (acc.accountCode || acc.code || "").toLowerCase().includes(accountSearchTerm.toLowerCase());
-                              
-                              if (!matchesSearch) return null;
-
-                              return (
-                                <li 
-                                  key={`${path}-${acc.accountName || acc.name || i}`} 
-                                  onClick={() => handleToggleAccount(acc.accountName || acc.name || "")}
-                                  style={{ 
-                                    display: "flex", 
-                                    alignItems: "center", 
-                                    padding: "10px 20px", 
-                                    cursor: "pointer",
-                                    borderBottom: "1px solid #f9f9f9"
-                                  }}
-                                >
-                                  <span style={{ display: "inline-block", width: `${level * 32}px` }}></span>
-                                  <label style={{ fontSize: "14px", color: "#333", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", margin: 0, flex: 1 }}>
-                                    {acc.accountName || acc.name}
-                                    {isSelected && (
-                                      <svg viewBox="0 0 512 512" width="18" height="18" fill="#156372" style={{ verticalAlign: "middle" }}>
-                                        <path d="M222.7 335.9c-4.4 0-8.4-1.8-11.4-4.8l-62.4-63.9c-6.2-6.3-6.1-16.4.3-22.6 6.3-6.2 16.4-6.1 22.6.3l51.2 52.4 117.5-116.5c6.3-6.2 16.4-6.2 22.6.1s6.2 16.4-.1 22.6L234 331.3c-3 2.9-7.1 4.6-11.3 4.6z"></path>
-                                      </svg>
-                                    )}
-                                  </label>
-                                </li>
-                              );
-                            });
-                          }
-
-                          return Object.keys(data).map(key => {
-                            const currentPath = path ? `${path}:${key}` : key;
-                            const isExpanded = expandedCategories[currentPath];
-                            const hasChildren = typeof data[key] === 'object';
-                            
-                            return (
-                              <div key={currentPath}>
-                                <li 
-                                  onClick={() => toggleCategory(currentPath)}
-                                  style={{ 
-                                    display: "flex", 
-                                    alignItems: "center", 
-                                    padding: "10px 20px", 
-                                    cursor: "pointer",
-                                    backgroundColor: "white",
-                                    borderBottom: "1px solid #f9f9f9"
-                                  }}
-                                >
-                                  <span style={{ display: "inline-block", width: `${level * 32}px` }}></span>
-                                  {hasChildren && (
-                                    <button style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", marginRight: "12px" }}>
-                                      <svg viewBox="0 0 512 512" width="18" height="18">
-                                        <path fill="#156372" d="M256 15C122.9 15 15 122.9 15 256s107.9 241 241 241 241-107.9 241-241S389.1 15 256 15zm122 263H134c-12.2 0-22-9.8-22-22s9.8-22 22-22h244c12.2 0 22 9.8 22 22s-9.8 22-22 22z"></path>
-                                        <path fill="#FFF" d="M378 234H134c-12.2 0-22 9.8-22 22s9.8 22 22 22h244c12.2 0 22-9.8 22-22s-9.8-22-22-22z"></path>
-                                        {!isExpanded && <path fill="#FFF" d="M234 134v244c0 12.2 9.8 22 22 22s22-9.8 22-22V134c0-12.2-9.8-22-22-22s-22 9.8-22 22z"></path>}
-                                      </svg>
-                                    </button>
-                                  )}
-                                  <label style={{ fontSize: "14px", fontWeight: "400", color: "#333", margin: 0, cursor: "pointer" }}>
-                                    {key}
-                                  </label>
-                                </li>
-                                {isExpanded && renderNode(data[key], currentPath, level + 1)}
-                              </div>
-                            );
-                          });
-                        };
-
-                        const grouped = getGroupedAccounts();
-                        return renderNode(grouped);
-                      })()}
-                    </ul>
-                 </div>
-               </div>
+            <div style={{ padding: "20px", borderBottom: "1px solid #f3f4f6" }}>
+              <div style={{ position: "relative" }}>
+                <Search style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} size={18} />
+                <input
+                  type="text"
+                  placeholder="Search accounts..."
+                  value={accountSearchTerm}
+                  onChange={(e) => setAccountSearchTerm(e.target.value)}
+                  style={{ width: "100%", padding: "12px 12px 12px 40px", border: "1px solid #e5e7eb", borderRadius: "12px", fontSize: "14px", outline: "none" }}
+                />
+              </div>
             </div>
 
-            <div style={{ padding: "20px 32px", borderTop: "1px solid #eee", display: "flex", gap: "10px", justifyContent: "flex-start" }}>
-              <button onClick={handleUpdateAccounts} style={{ padding: "10px 24px", backgroundColor: "#156372", color: "white", border: "none", borderRadius: "4px", fontSize: "14px", fontWeight: "600", cursor: "pointer" }}>Update</button>
-              <button onClick={handleCloseModal} style={{ padding: "10px 24px", backgroundColor: "white", color: "#333", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "14px", fontWeight: "600", cursor: "pointer" }}>Cancel</button>
+            <div style={{ flex: 1, overflowY: "auto", padding: "10px 20px" }}>
+               {(() => {
+                 const grouped = getGroupedAccounts();
+                 return Object.keys(grouped).map(cat => (
+                   <div key={cat} style={{ marginBottom: "16px" }}>
+                     <div 
+                      onClick={() => toggleCategory(cat)}
+                      style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px", cursor: "pointer", borderRadius: "8px", backgroundColor: "#f8fafc" }}
+                     >
+                        <ChevronDown size={16} style={{ transform: expandedCategories[cat] ? "none" : "rotate(-90deg)", transition: "transform 0.2s" }} />
+                        <span style={{ fontSize: "13px", fontWeight: "700", color: "#475569", textTransform: "uppercase" }}>{cat}</span>
+                     </div>
+                     {expandedCategories[cat] && (
+                       <div style={{ marginTop: "8px" }}>
+                         {Object.keys(grouped[cat]).map(subCat => (
+                           <div key={subCat} style={{ marginLeft: "12px", marginBottom: "8px" }}>
+                             <div style={{ fontSize: "12px", fontWeight: "600", color: "#94a3b8", padding: "4px 8px" }}>{subCat}</div>
+                             {grouped[cat][subCat].filter((acc: any) => {
+                               const name = acc.accountName || acc.name || "";
+                               return accountSearchTerm === "" || name.toLowerCase().includes(accountSearchTerm.toLowerCase());
+                             }).map((acc: any) => {
+                               const name = acc.accountName || acc.name || "";
+                               const isSelected = modalSelectedAccounts.includes(name);
+                               return (
+                                 <div 
+                                  key={name}
+                                  onClick={() => handleToggleAccount(name)}
+                                  style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 12px", cursor: "pointer", borderRadius: "8px", backgroundColor: isSelected ? "#f0fdfa" : "transparent" }}
+                                 >
+                                   <div style={{ width: "20px", height: "20px", borderRadius: "6px", border: isSelected ? "none" : "2px solid #d1d5db", backgroundColor: isSelected ? "#156372" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                     {isSelected && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                                   </div>
+                                   <span style={{ fontSize: "14px", color: isSelected ? "#156372" : "#374151", fontWeight: isSelected ? "600" : "400" }}>{name}</span>
+                                 </div>
+                               );
+                             })}
+                           </div>
+                         ))}
+                       </div>
+                     )}
+                   </div>
+                 ));
+               })()}
+            </div>
+
+            <div style={{ padding: "24px", borderTop: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between" }}>
+              <button onClick={handleSelectAll} style={{ padding: "10px 16px", border: "1px solid #e5e7eb", borderRadius: "10px", backgroundColor: "white", fontSize: "14px", fontWeight: "600", color: "#374151", cursor: "pointer" }}>Select All</button>
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button onClick={handleCloseModal} style={{ padding: "10px 20px", border: "none", background: "none", fontSize: "14px", fontWeight: "600", color: "#6b7280", cursor: "pointer" }}>Cancel</button>
+                <button onClick={handleUpdateAccounts} style={{ padding: "10px 24px", backgroundColor: "#156372", color: "white", border: "none", borderRadius: "10px", fontSize: "14px", fontWeight: "600", cursor: "pointer" }}>Update Selection</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1064,5 +794,18 @@ function NewBudget() {
     </div>
   );
 }
+
+const ChevronDown = ({ size, style }: { size: number, style?: React.CSSProperties }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={style}>
+    <path d="M6 9l6 6 6-6"></path>
+  </svg>
+);
+
+const Search = ({ size, style, className }: { size: number, style?: React.CSSProperties, className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+    <circle cx="11" cy="11" r="8"></circle>
+    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+  </svg>
+);
 
 export default NewBudget;

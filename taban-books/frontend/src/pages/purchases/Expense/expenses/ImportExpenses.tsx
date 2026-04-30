@@ -15,14 +15,14 @@ import {
   ArrowRight,
   ArrowLeft,
 } from "lucide-react";
-import { parseImportFile } from "../../utils/importFileParser";
+import { parseImportFile } from "../../../sales/utils/importFileParser";
 import {
   expensesAPI,
   vendorsAPI,
   customersAPI,
   chartOfAccountsAPI,
   bankAccountsAPI,
-} from "../../../services/api";
+} from "../../../../services/api";
 
 const EXPENSE_MAP_SECTIONS = [
   {
@@ -466,7 +466,7 @@ export default function ImportExpenses() {
 
       window.dispatchEvent(new Event("expensesUpdated"));
       alert(`Import complete.\nCreated: ${createdCount}\nSkipped: ${skippedCount}\nFailed: ${failedCount}`);
-      if (createdCount > 0) navigate("/expenses");
+      if (createdCount > 0) navigate("/purchases/expenses");
     } catch (error) {
       alert("Import failed. Please try again.");
     } finally {
@@ -525,7 +525,7 @@ export default function ImportExpenses() {
           </div>
         </div>
 
-        <button onClick={() => navigate("/expenses")} className="w-9 h-9 flex items-center justify-center rounded-xl bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-all duration-200 group">
+        <button onClick={() => navigate("/purchases/expenses")} className="w-9 h-9 flex items-center justify-center rounded-xl bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-all duration-200 group">
           <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
         </button>
       </div>
@@ -821,7 +821,7 @@ export default function ImportExpenses() {
         </div>
 
         <div className="flex items-center gap-4">
-          <button onClick={() => navigate("/expenses")} className="h-12 px-6 text-gray-400 font-bold hover:text-gray-600 transition-colors uppercase tracking-widest text-xs">
+          <button onClick={() => navigate("/purchases/expenses")} className="h-12 px-6 text-gray-400 font-bold hover:text-gray-600 transition-colors uppercase tracking-widest text-xs">
             Cancel
           </button>
 

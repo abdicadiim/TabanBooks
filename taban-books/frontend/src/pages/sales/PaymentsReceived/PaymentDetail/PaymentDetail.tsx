@@ -1257,7 +1257,7 @@ export default function PaymentDetail() {
                     </div>
                     <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
                       <span>{p.paymentNumber || p.id}</span>
-                      <span>â€¢</span>
+                      <span>•</span>
                       <span>{formatDate(p.paymentDate)}</span>
                     </div>
                     <div className="flex items-center gap-2 mt-1.5">
@@ -1672,7 +1672,6 @@ export default function PaymentDetail() {
                   balance: 0
                 }}
               />
-            </div>
             </div>
           </div>
 

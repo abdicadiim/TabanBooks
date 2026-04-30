@@ -8,7 +8,10 @@ const NewSalesOrder = lazy(() => import("./newPage/NewSalesOrder"));
 function RouteFallback() {
   return (
     <div className="flex h-screen items-center justify-center bg-white">
-      <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#156372] border-t-transparent"></div>
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#156372] border-t-transparent"></div>
+        <p className="text-sm text-gray-500">Loading sales orders...</p>
+      </div>
     </div>
   );
 }
@@ -21,6 +24,7 @@ export default function SalesOrderRoutes() {
         <Route path="new" element={<NewSalesOrder />} />
         <Route path=":id/edit" element={<NewSalesOrder />} />
         <Route path=":id" element={<SalesOrderDetail />} />
+        <Route path=":salesOrderId/edit" element={<NewSalesOrder />} />
         <Route path="*" element={<Navigate to="." replace />} />
       </Routes>
     </Suspense>

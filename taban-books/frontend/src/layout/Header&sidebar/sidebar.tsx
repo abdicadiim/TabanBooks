@@ -136,6 +136,115 @@ const items: MenuItem[] = [
   { label: "Documents", to: "/documents", icon: FileText },
 ];
 
+const hasModuleAccess = (item: MenuItem | { label: string; to: string; moduleKey?: string }, currentUser: any): boolean => {
+  if (!currentUser) return false;
+  if (currentUser.role === 'owner' || currentUser.role === 'admin' || currentUser.permissions === 'full_access') return true;
+  
+  const permissions = currentUser.permissions;
+  if (!permissions) return false;
+
+  switch (item.label) {
+    case "Home":
+    case "Dashboard":
+    case "Recent Updates":
+    case "Getting Started":
+    case "Reports":
+      return true;
+
+    case "Items":
+      return !!permissions.items?.item?.view;
+
+    case "Inventory":
+    case "Inventory Adjustments":
+      return !!permissions.items?.inventoryAdjustments?.view;
+
+    // Sales Sub-modules
+    case "Sales":
+      return !!(permissions.sales?.invoices?.view || permissions.sales?.estimates?.view || permissions.sales?.salesOrders?.view || 
+               permissions.sales?.retainerInvoices?.view || permissions.sales?.salesReceipts?.view || 
+               permissions.sales?.paymentsReceived?.view || permissions.sales?.recurringInvoices?.view || 
+               permissions.sales?.creditNotes?.view || permissions.sales?.customers?.view);
+    case "Customers":
+      return !!permissions.sales?.customers?.view;
+    case "Quotes":
+      return !!permissions.sales?.estimates?.view;
+    case "Retainer Invoices":
+      return !!permissions.sales?.retainerInvoices?.view;
+    case "Sales Orders":
+      return !!permissions.sales?.salesOrders?.view;
+    case "Invoices":
+      return !!permissions.sales?.invoices?.view;
+    case "Sales Receipts":
+      return !!permissions.sales?.salesReceipts?.view;
+    case "Recurring Invoices":
+      return !!permissions.sales?.recurringInvoices?.view;
+    case "Payment Links":
+      return !!permissions.sales?.paymentLinks?.view;
+    case "Payments Received":
+      return !!permissions.sales?.paymentsReceived?.view;
+    case "Credit Notes":
+      return !!permissions.sales?.creditNotes?.view;
+
+    // Purchases Sub-modules
+    case "Purchases":
+      return !!(permissions.purchases?.expenses?.view || permissions.purchases?.recurringExpenses?.view || 
+               permissions.purchases?.bills?.view || permissions.purchases?.vendorCredits?.view || 
+               permissions.purchases?.purchaseOrders?.view || permissions.purchases?.paymentsMade?.view || 
+               permissions.purchases?.recurringBills?.view || permissions.purchases?.vendors?.view);
+    case "Vendors":
+      return !!permissions.purchases?.vendors?.view;
+    case "Expenses":
+      return !!permissions.purchases?.expenses?.view;
+    case "Recurring Expenses":
+      return !!permissions.purchases?.recurringExpenses?.view;
+    case "Purchase Orders":
+      return !!permissions.purchases?.purchaseOrders?.view;
+    case "Bills":
+      return !!permissions.purchases?.bills?.view;
+    case "Recurring Bills":
+      return !!permissions.purchases?.recurringBills?.view;
+    case "Payments Made":
+      return !!permissions.purchases?.paymentsMade?.view;
+    case "Vendor Credits":
+      return !!permissions.purchases?.vendorCredits?.view;
+
+    // Time Tracking
+    case "Time Tracking":
+    case "Projects":
+    case "Timesheet":
+    case "Approvals":
+    case "Customer Approvals":
+      return !!(permissions.timesheets?.projects?.view || permissions.timesheets?.timesheet?.view);
+
+    case "Banking":
+      return !!permissions.banking?.banking?.view;
+
+    // Accountant
+    case "Accountant":
+      return !!(permissions.accountant?.manualJournals?.view || permissions.accountant?.chartOfAccounts?.view || 
+               permissions.accountant?.budgets?.view || permissions.accountant?.bulkUpdate?.view || 
+               permissions.accountant?.currencyAdjustments?.view || permissions.accountant?.transactionLocking?.view);
+    case "Journal Entries":
+      return !!permissions.accountant?.manualJournals?.view;
+    case "Bulk Update":
+      return !!permissions.accountant?.bulkUpdate?.view;
+    case "Currency Adjustments":
+      return !!permissions.accountant?.currencyAdjustments?.view;
+    case "Chart of Accounts":
+      return !!permissions.accountant?.chartOfAccounts?.view;
+    case "Budgets":
+      return !!permissions.accountant?.budgets?.view;
+    case "Transaction Locking":
+      return !!permissions.accountant?.transactionLocking?.view;
+
+    case "Documents":
+      return !!permissions.documents?.documents?.view;
+
+    default:
+      return true;
+  }
+};
+
 const isRouteMatch = (pathname: string, route?: string): boolean => {
   if (!route) return false;
   if (pathname === route) return true;
@@ -405,7 +514,7 @@ export default function Sidebar() {
 
   const filteredItems = useMemo(() => {
     return items
-      .filter((item) => isModuleEnabled(item.moduleKey))
+      .filter((item) => isModuleEnabled(item.moduleKey) && hasModuleAccess(item, currentUser))
       .map((item) => {
         if (!item.children?.length) return item;
 
@@ -418,7 +527,7 @@ export default function Sidebar() {
             return false;
           }
 
-          return isModuleEnabled(child.moduleKey);
+          return isModuleEnabled(child.moduleKey) && hasModuleAccess(child, currentUser);
         });
         if (!children.length) return null;
 
@@ -428,7 +537,7 @@ export default function Sidebar() {
         };
       })
       .filter(Boolean) as MenuItem[];
-  }, [enabledModules, timesheetSidebarSettings]);
+  }, [enabledModules, timesheetSidebarSettings, currentUser]);
 
   useEffect(() => {
     if (openSection && !filteredItems.some((item) => item.label === openSection)) {

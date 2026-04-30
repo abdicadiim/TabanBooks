@@ -15,8 +15,8 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { expensesAPI, recurringExpensesAPI, taxesAPI } from "../../../services/api";
-import { useCurrency } from "../../../hooks/useCurrency";
+import { expensesAPI, recurringExpensesAPI, taxesAPI } from "../../../../services/api";
+import { useCurrency } from "../../../../hooks/useCurrency";
 import { computeRecurringExpenseDisplayAmount, computeRecurringExpenseTaxAmount } from "../shared/recurringExpenseModel";
 import RecurringExpenseCommentsPanel from "./RecurringExpenseCommentsPanel";
 
@@ -418,7 +418,7 @@ export default function RecurringExpenseDetail() {
       return;
     }
     window.dispatchEvent(new Event("recurringExpensesUpdated"));
-    navigate("/expenses/recurring-expenses");
+    navigate("/purchases/expenses/recurring-expenses");
   };
 
   const updateRecurringStatus = async (nextStatus: "active" | "stopped") => {
@@ -474,7 +474,7 @@ export default function RecurringExpenseDetail() {
       reportingTags: Array.isArray(expense.reportingTags) ? expense.reportingTags : [],
     };
     setMoreMenuOpen(false);
-    navigate("/expenses/new", { state: { clonedData, receiptFiles: attachments } });
+    navigate("/purchases/expenses/new", { state: { clonedData, receiptFiles: attachments } });
   };
 
   if (loading) return <div style={{ padding: 24 }}>Loading...</div>;
@@ -551,7 +551,7 @@ export default function RecurringExpenseDetail() {
               <div className="inline-flex items-center overflow-hidden rounded-md border border-[#15803d] shadow-sm">
                 <button
                   className="px-3 py-2 text-white bg-[#156372] hover:bg-[#0D4A52] cursor-pointer"
-                  onClick={() => navigate("/expenses/recurring-expenses/new")}
+                  onClick={() => navigate("/purchases/expenses/recurring-expenses/new")}
                 >
                   <Plus size={16} />
                 </button>
@@ -572,7 +572,7 @@ export default function RecurringExpenseDetail() {
                     className="w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-gray-50"
                     onClick={() => {
                       setSidebarCreateMenuOpen(false);
-                      navigate("/expenses/recurring-expenses/new");
+                      navigate("/purchases/expenses/recurring-expenses/new");
                     }}
                   >
                     New Profile
@@ -581,7 +581,7 @@ export default function RecurringExpenseDetail() {
                     className="w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-gray-50"
                     onClick={() => {
                       setSidebarCreateMenuOpen(false);
-                      navigate("/expenses/recurring-expenses/import");
+                      navigate("/purchases/expenses/recurring-expenses/import");
                     }}
                   >
                     Import Profiles
@@ -616,7 +616,7 @@ export default function RecurringExpenseDetail() {
                     className="w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-gray-50"
                     onClick={() => {
                       setSidebarMoreMenuOpen(false);
-                      navigate("/expenses/recurring-expenses");
+                      navigate("/purchases/expenses/recurring-expenses");
                     }}
                   >
                     Go to Recurring Expenses
@@ -633,7 +633,7 @@ export default function RecurringExpenseDetail() {
             return (
               <button
                 key={row.id}
-                onClick={() => navigate(`/expenses/recurring-expenses/${row.id}`)}
+                onClick={() => navigate(`/purchases/expenses/recurring-expenses/${row.id}`)}
                 className={`w-full text-left px-3 py-2.5 border-b border-gray-200 ${active ? "bg-[#f6f8fc]" : "bg-white hover:bg-gray-50"}`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -664,7 +664,7 @@ export default function RecurringExpenseDetail() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => navigate("/expenses/recurring-expenses/new", { state: { editExpense: expense, isEdit: true } })}
+              onClick={() => navigate("/purchases/expenses/recurring-expenses/new", { state: { editExpense: expense, isEdit: true } })}
               className="h-7 w-9 border border-gray-300 rounded bg-white text-gray-700 hover:bg-gray-50 flex items-center justify-center"
             >
               <Pencil size={13} />
@@ -710,7 +710,7 @@ export default function RecurringExpenseDetail() {
                 </div>
               )}
             </div>
-            <button onClick={() => navigate("/expenses/recurring-expenses")} className="h-7 w-7 text-gray-500 hover:text-gray-800">
+            <button onClick={() => navigate("/purchases/expenses/recurring-expenses")} className="h-7 w-7 text-gray-500 hover:text-gray-800">
               <X size={18} />
             </button>
           </div>
@@ -887,7 +887,7 @@ export default function RecurringExpenseDetail() {
                   </thead>
                   <tbody>
                     {generatedExpenses.map((row: any, index: number) => (
-                      <tr key={row.expense_id || row._id || index} onClick={() => navigate(`/expenses/${row.expense_id || row._id}`)} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
+                      <tr key={row.expense_id || row._id || index} onClick={() => navigate(`/purchases/expenses/${row.expense_id || row._id}`)} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
                         <td className="p-2 text-sm text-gray-700">{formatDate(row.date)}</td>
                         <td className="p-2 text-sm text-[#156372]">{row.reference_number || "-"}</td>
                         <td className="p-2 text-sm text-gray-700">{row.account_name || "-"}</td>

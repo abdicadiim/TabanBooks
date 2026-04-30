@@ -333,17 +333,10 @@ export default function AllSettings() {
     };
   }, [searchQuery]);
 
+  // No longer needs to manually hide sidebar as it's handled by SettingsLayout parent route
   useEffect(() => {
-    const sidebar = document.querySelector("aside");
-    const topBar = document.querySelector("header");
-
-    if (sidebar) (sidebar as HTMLElement).style.display = "none";
-    if (topBar) (topBar as HTMLElement).style.display = "none";
-
-    return () => {
-      if (sidebar) (sidebar as HTMLElement).style.display = "";
-      if (topBar) (topBar as HTMLElement).style.display = "";
-    };
+    // Scroll to top on mount
+    window.scrollTo(0, 0);
   }, []);
 
   return (

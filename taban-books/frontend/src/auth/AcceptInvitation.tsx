@@ -22,6 +22,7 @@ export default function AcceptInvitation() {
     const [error, setError] = useState<string | null>(null);
     const [otp, setOtp] = useState(["", "", "", "", "", ""]);
     const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+    const lastSubmittedOtpRef = useRef("");
 
     useEffect(() => {
         const name = searchParams.get("name") || "User";
@@ -56,6 +57,7 @@ export default function AcceptInvitation() {
         const newOtp = [...otp];
         newOtp[index] = value.slice(-1);
         setOtp(newOtp);
+        setError(null);
 
         if (value && index < 5) {
             otpRefs.current[index + 1]?.focus();
@@ -78,6 +80,7 @@ export default function AcceptInvitation() {
             if (index < 6) newOtp[index] = digit;
         });
         setOtp(newOtp);
+        setError(null);
 
         // Focus the last filled input or the next empty one
         const focusIndex = data.length === 6 ? 5 : data.length;
@@ -101,13 +104,40 @@ export default function AcceptInvitation() {
                 });
             }
 
+            if (typeof window !== "undefined") {
+                window.sessionStorage.setItem("taban:skip-bootstrap-loader", "1");
+            }
             navigate("/");
         } catch (error: any) {
+            lastSubmittedOtpRef.current = "";
             setError(error.message || "Invalid verification code.");
         } finally {
             setIsLoading(false);
         }
     };
+
+    useEffect(() => {
+        if (step !== 2 || isLoading) {
+            return;
+        }
+
+        const fullOtp = otp.join("");
+        if (fullOtp.length !== 6 || lastSubmittedOtpRef.current === fullOtp) {
+            return;
+        }
+
+        lastSubmittedOtpRef.current = fullOtp;
+        handleVerifyOtp();
+    }, [otp, step, isLoading]);
+
+    useEffect(() => {
+        if (step !== 2) {
+            lastSubmittedOtpRef.current = "";
+            return;
+        }
+
+        otpRefs.current[0]?.focus();
+    }, [step]);
 
     return (
         <div className="min-h-screen bg-[#f1f5f9] flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
@@ -115,21 +145,9 @@ export default function AcceptInvitation() {
             <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-slate-300/40 rounded-full blur-[120px]"></div>
             <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#156372]/5 rounded-full blur-[120px]"></div>
 
-            <div className="w-full max-w-[540px] bg-white rounded-2xl shadow-[0_20px_50px_rgba(30,41,59,0.08)] border border-slate-200 overflow-hidden z-10 transition-all duration-500">
+            <div className="w-full max-w-[540px] rounded-2xl overflow-hidden z-10 transition-all duration-500">
                 {step === 1 ? (
                     <div className="p-10">
-                        <div className="flex justify-between items-center mb-10">
-                            <div className="h-16 w-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center shadow-sm">
-                                <div className="text-[28px] font-bold text-[#156372]">
-                                    {isSenderMode ? <Lock size={32} /> : (invitationData.org ? invitationData.org.charAt(0).toUpperCase() : "O")}
-                                </div>
-                            </div>
-                            <div className="h-10 px-4 rounded-full bg-emerald-50 border border-emerald-100 flex items-center gap-2 text-emerald-700 text-sm font-semibold">
-                                <ShieldCheck size={16} />
-                                {isSenderMode ? "Sender Verification" : "Official Invitation"}
-                            </div>
-                        </div>
-
                         <div className="mb-10 text-center sm:text-left">
                             <h2 className="text-2xl font-bold text-slate-900 mb-2">
                                 {isSenderMode ? "Verify Sender Email" : `Join ${invitationData.org}`}

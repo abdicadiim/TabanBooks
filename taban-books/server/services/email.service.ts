@@ -451,6 +451,9 @@ export const sendInvitationEmail = async (
   const subject = `Invitation to join the ${organizationName} organization`;
 
   const appName = process.env.APP_NAME || "Taban Books";
+  const normalizedRole = String(role || "Staff")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
   const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -459,51 +462,87 @@ export const sendInvitationEmail = async (
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${subject}</title>
 </head>
-<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f4f6;padding:24px 12px;">
+<body style="margin:0;padding:0;background:#eef2f7;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;color:#0f172a;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#eef2f7;padding:32px 12px;">
     <tr>
       <td align="center">
-        <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="max-width:640px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <table role="presentation" width="620" cellspacing="0" cellpadding="0" style="max-width:620px;width:100%;background:#ffffff;border:1px solid #dbe3ee;border-radius:18px;overflow:hidden;box-shadow:0 18px 48px rgba(15,23,42,0.08);">
           <tr>
-            <td style="padding:24px 28px;border-bottom:1px solid #e5e7eb;">
-              <h1 style="margin:0;font-size:30px;line-height:1.3;font-weight:600;color:#111827;">Invitation to join the ${organizationName} organization!</h1>
+            <td style="padding:0;">
+              <div style="background:linear-gradient(135deg,#156372 0%,#0f4e5a 100%);padding:30px 32px 26px;">
+                <p style="margin:0 0 10px;font-size:11px;line-height:1;text-transform:uppercase;letter-spacing:1.8px;color:rgba(255,255,255,0.68);font-weight:700;">
+                  ${appName} Invitation
+                </p>
+                <h1 style="margin:0;font-size:32px;line-height:1.25;font-weight:800;color:#ffffff;">
+                  Join ${organizationName}
+                </h1>
+                <p style="margin:14px 0 0;font-size:15px;line-height:1.7;color:rgba(255,255,255,0.82);">
+                  Your workspace is ready. Accept the invitation below to access your organization and continue setup securely.
+                </p>
+              </div>
             </td>
           </tr>
           <tr>
-            <td style="padding:24px 28px;">
-              <p style="margin:0 0 20px 0;font-size:36px;line-height:1.2;font-weight:700;color:#111827;">Hi ${recipientName},</p>
-              <p style="margin:0 0 14px 0;font-size:22px;line-height:1.5;color:#1f2937;">
+            <td style="padding:32px;">
+              <p style="margin:0 0 18px;font-size:34px;line-height:1.15;font-weight:800;color:#111827;">
+                Hi ${recipientName},
+              </p>
+              <p style="margin:0 0 24px;font-size:20px;line-height:1.65;color:#334155;">
                 You have been invited by the admin of <strong>${organizationName}</strong> to join their ${appName} organization.
               </p>
-              <p style="margin:0 0 14px 0;font-size:20px;line-height:1.5;color:#1f2937;">
-                Assigned role: <strong>${role}</strong>
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:22px 22px 18px;margin:0 0 28px;">
+                <div style="margin:0 0 14px;">
+                  <p style="margin:0 0 6px;font-size:11px;line-height:1;text-transform:uppercase;letter-spacing:1.4px;color:#64748b;font-weight:800;">
+                    Assigned Role
+                  </p>
+                  <p style="margin:0;font-size:22px;line-height:1.35;font-weight:800;color:#0f172a;">
+                    ${normalizedRole}
+                  </p>
+                </div>
+                <div style="margin:0 0 14px;">
+                  <p style="margin:0 0 6px;font-size:11px;line-height:1;text-transform:uppercase;letter-spacing:1.4px;color:#64748b;font-weight:800;">
+                    Invited By
+                  </p>
+                  <p style="margin:0;font-size:18px;line-height:1.45;font-weight:700;color:#1e293b;">
+                    ${inviterName}
+                  </p>
+                </div>
+                <div>
+                  <p style="margin:0 0 6px;font-size:11px;line-height:1;text-transform:uppercase;letter-spacing:1.4px;color:#64748b;font-weight:800;">
+                    Invitation Email
+                  </p>
+                  <p style="margin:0;font-size:16px;line-height:1.5;color:#334155;">
+                    ${email}
+                  </p>
+                </div>
+              </div>
+
+              <div style="background:linear-gradient(180deg,#f8fbfc 0%,#ffffff 100%);border:1px solid #d9e7ea;border-radius:16px;padding:24px 22px;text-align:center;margin:0 0 26px;">
+                <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#475569;">
+                  Open your invitation to review access and continue the secure sign-in flow.
+                </p>
+                <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;">
+                  <tr>
+                    <td style="border-radius:10px;background:#156372;box-shadow:0 8px 18px rgba(21,99,114,0.22);">
+                      <a href="${invitationPageUrl}" style="display:inline-block;padding:16px 30px;font-size:18px;line-height:1;font-weight:800;color:#ffffff;text-decoration:none;">
+                        View Invitation
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+
+              <p style="margin:0 0 18px;font-size:15px;line-height:1.7;color:#64748b;">
+                If you have trouble accepting the invitation, contact your administrator or reply to your onboarding contact for assistance.
               </p>
-              <p style="margin:0 0 24px 0;font-size:20px;line-height:1.5;color:#1f2937;">
-                Invited by: <strong>${inviterName}</strong>
-              </p>
-
-              <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 24px 0;">
-                <tr>
-                  <td style="border-radius:4px;background:#3b9c75;">
-                    <a href="${invitationPageUrl}" style="display:inline-block;padding:14px 26px;font-size:24px;line-height:1;font-weight:700;color:#ffffff;text-decoration:none;">View Invitation</a>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- removed login credentials section as requested -->
-
-
-              <p style="margin:0 0 18px 0;font-size:16px;line-height:1.5;color:#374151;">
-                If you have trouble accepting the invitation, contact your administrator.
-              </p>
-              <p style="margin:0 0 4px 0;font-size:16px;color:#374151;">Regards,</p>
-              <p style="margin:0;font-size:22px;font-weight:700;color:#111827;">The Taban Team</p>
+              <p style="margin:0 0 4px;font-size:15px;color:#475569;">Regards,</p>
+              <p style="margin:0;font-size:22px;font-weight:800;color:#0f4e5a;">The Taban Team</p>
             </td>
           </tr>
           <tr>
-            <td style="padding:18px 28px;border-top:1px solid #e5e7eb;background:#fafafa;">
-              <p style="margin:0;font-size:13px;line-height:1.5;color:#6b7280;">
-                This email is generated by ${appName}. Please do not reply to this message.
+            <td style="padding:18px 32px;border-top:1px solid #e2e8f0;background:#f8fafc;">
+              <p style="margin:0;font-size:12px;line-height:1.7;color:#64748b;">
+                This email was generated by ${appName}. Please do not reply directly to this message.
               </p>
             </td>
           </tr>

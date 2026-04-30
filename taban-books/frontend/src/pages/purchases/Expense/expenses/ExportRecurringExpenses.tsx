@@ -49,7 +49,13 @@ const MODULE_CATEGORIES = [
   }
 ];
 
-export default function ExportRecurringExpenses({ onClose, exportType = "recurring-expenses", data = [] }) {
+interface ExportRecurringExpensesProps {
+  onClose: () => void;
+  exportType?: string;
+  data?: any[];
+}
+
+export default function ExportRecurringExpenses({ onClose, exportType = "recurring-expenses", data = [] }: ExportRecurringExpensesProps) {
   const [module, setModule] = useState(
     exportType === "current-view" ? "Recurring Expenses (Current View)" : "Recurring Expenses"
   );
@@ -64,8 +70,8 @@ export default function ExportRecurringExpenses({ onClose, exportType = "recurri
   const [isDecimalFormatOpen, setIsDecimalFormatOpen] = useState(false);
   const [isModuleOpen, setIsModuleOpen] = useState(false);
   const [moduleSearch, setModuleSearch] = useState("");
-  const decimalFormatRef = useRef(null);
-  const moduleRef = useRef(null);
+  const decimalFormatRef = useRef<HTMLDivElement | null>(null);
+  const moduleRef = useRef<HTMLDivElement | null>(null);
 
   const isCurrentView = exportType === "current-view";
 
@@ -85,11 +91,11 @@ export default function ExportRecurringExpenses({ onClose, exportType = "recurri
   }, [isCurrentView, exportFileFormat]);
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (decimalFormatRef.current && !decimalFormatRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (decimalFormatRef.current && !decimalFormatRef.current.contains(event.target as Node)) {
         setIsDecimalFormatOpen(false);
       }
-      if (moduleRef.current && !moduleRef.current.contains(event.target)) {
+      if (moduleRef.current && !moduleRef.current.contains(event.target as Node)) {
         setIsModuleOpen(false);
       }
     };
@@ -276,15 +282,15 @@ export default function ExportRecurringExpenses({ onClose, exportType = "recurri
 
                     {/* Module List */}
                     <div className="overflow-y-auto max-h-[300px] py-1">
-                      {Object.entries(
+                      {(Object.entries(
                         MODULE_CATEGORIES.reduce((acc, category) => {
                           const filtered = category.modules.filter(m =>
                             m.toLowerCase().includes(moduleSearch.toLowerCase())
                           );
                           if (filtered.length > 0) acc[category.name] = filtered;
                           return acc;
-                        }, {} as any)
-                      ).map(([categoryName, modules]: [string, string[]]) => (
+                        }, {} as Record<string, string[]>)
+                      ) as [string, string[]][]).map(([categoryName, modules]) => (
                         <div key={categoryName}>
                           <div className="px-4 py-2 text-[11px] font-bold text-gray-400 bg-gray-50/50 uppercase tracking-[2px]">
                             {categoryName}

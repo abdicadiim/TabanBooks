@@ -1,25 +1,34 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   Edit,
   MoreVertical,
   X,
   ChevronDown,
+  ChevronUp,
   FileText,
   Info,
   RefreshCw,
   ChevronRight,
   ArrowUpDown,
+  Download,
+  Upload,
+  Settings,
+  Star,
+  CreditCard,
   Trash2,
   Plus,
-  Paperclip,
-  MessageSquare,
   Link2
 } from "lucide-react";
 import { vendorCreditsAPI, vendorsAPI, billsAPI, currenciesAPI, settingsAPI, pdfTemplatesAPI, profileAPI } from "../../../services/api";
 import TransactionPDFDocument from "../../../components/Transactions/TransactionPDFDocument";
 import toast from "react-hot-toast";
+import { toast as notify } from "react-toastify";
 import { downloadVendorCreditsPaperPdf } from "./vendorCreditPdf";
+import ExportVendorCredits from "./ExportVendorCredits";
+import BulkUpdateModal from "../shared/BulkUpdateModal";
+import { useDeleteVendorCreditsMutation } from "../../../features/purchases/vendor-credits/vendorCreditQueries";
 
 export default function VendorCreditDetail() {
   const { id } = useParams();
@@ -35,28 +44,45 @@ export default function VendorCreditDetail() {
     };
   });
   const [vendorCredits, setVendorCredits] = useState<any[]>(() => preloadedVendorCredits);
-  const [vendor, setVendor] = useState(null);
+  const [vendor, setVendor] = useState<any>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [selectedView, setSelectedView] = useState("All");
+  const [selectedSort, setSelectedSort] = useState("date");
+  const [sortDirection, setSortDirection] = useState("desc");
+  const [sidebarMoreMenuOpen, setSidebarMoreMenuOpen] = useState(false);
+  const [sortSubmenuOpen, setSortSubmenuOpen] = useState(false);
+  const [importSubmenuOpen, setImportSubmenuOpen] = useState(false);
+  const [exportSubmenuOpen, setExportSubmenuOpen] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportModalType, setExportModalType] = useState<any>(null);
+  const [showPaymentModeModal, setShowPaymentModeModal] = useState(false);
+  const [selectedCredits, setSelectedCredits] = useState<any[]>([]);
+  const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
+  const [bulkActionsOpen, setBulkActionsOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [pdfMenuOpen, setPdfMenuOpen] = useState(false);
   const [showApplyModal, setShowApplyModal] = useState(false);
-  const [bills, setBills] = useState([]);
+  const [bills, setBills] = useState<any[]>([]);
   const [creditApplications, setCreditApplications] = useState<Record<string, any>>({});
   const [appliedOnDate, setAppliedOnDate] = useState(true);
   const [appliedDate, setAppliedDate] = useState(new Date().toISOString().split("T")[0]);
   const [baseCurrency, setBaseCurrency] = useState<string>("AED");
   const [exchangeRate, setExchangeRate] = useState<number>(1.0);
   const [organizationInfo, setOrganizationInfo] = useState<any>(null);
-  const [showCommentModal, setShowCommentModal] = useState(false);
-  const [commentDraft, setCommentDraft] = useState("");
-  const [isSavingComment, setIsSavingComment] = useState(false);
-  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [isLoading, setIsLoading] = useState(() => !preloadedVendorCredit);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activePdfTemplate, setActivePdfTemplate] = useState<any>(null);
   const isInitialLoad = useRef(!preloadedVendorCredit);
-  const moreMenuRef = useRef(null);
-  const pdfMenuRef = useRef(null);
-  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const sidebarMoreMenuRef = useRef<HTMLDivElement | null>(null);
+  const sortSubmenuRef = useRef<HTMLDivElement | null>(null);
+  const importSubmenuRef = useRef<HTMLDivElement | null>(null);
+  const exportSubmenuRef = useRef<HTMLDivElement | null>(null);
+  const bulkActionsRef = useRef<HTMLDivElement | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const pdfMenuRef = useRef<HTMLDivElement | null>(null);
   const journalSectionRef = useRef<HTMLDivElement | null>(null);
+  const deleteVendorCreditsMutation = useDeleteVendorCreditsMutation();
 
   const parseMoneyValue = (value: any): number => {
     if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -88,6 +114,46 @@ export default function VendorCreditDetail() {
     return getBillOutstandingBalance(bill) > 0;
   };
 
+
+  const sortOptions = ["Credit Note #", "Date", "Vendor Name", "Amount", "Status"];
+
+  const normalizeStatus = (value: any) => String(value || "").trim().toLowerCase();
+
+  const getSortedCredits = (credits: any[]) => {
+    const sorted = [...credits].sort((a: any, b: any) => {
+      switch (selectedSort) {
+        case "creditNote":
+          return String(a?.creditNumber || a?.creditNote || "").localeCompare(String(b?.creditNumber || b?.creditNote || ""));
+        case "vendor":
+          return String(a?.vendorName || a?.vendor?.displayName || a?.vendor?.name || "").localeCompare(String(b?.vendorName || b?.vendor?.displayName || b?.vendor?.name || ""));
+        case "amount":
+          return parseMoneyValue(a?.amount || a?.balance || 0) - parseMoneyValue(b?.amount || b?.balance || 0);
+        case "status":
+          return normalizeStatus(a?.status).localeCompare(normalizeStatus(b?.status));
+        case "date":
+        default:
+          return new Date(a?.date || 0).getTime() - new Date(b?.date || 0).getTime();
+      }
+    });
+
+    return sortDirection === "asc" ? sorted : sorted.reverse();
+  };
+
+  const filteredCredits = useMemo(() => {
+    if (selectedView === "All") return getSortedCredits(vendorCredits);
+    const view = selectedView.toLowerCase();
+    const filtered = vendorCredits.filter((credit: any) => normalizeStatus(credit?.status) === view);
+    return getSortedCredits(filtered);
+  }, [vendorCredits, selectedView, selectedSort, sortDirection]);
+
+  const vendorCreditFieldOptions = useMemo(() => {
+    return [
+      { value: "creditNote", label: "Credit Note #", type: "text", placeholder: "Enter credit note number" },
+      { value: "date", label: "Date", type: "date" },
+      { value: "billingAddress", label: "Billing Address", type: "text", placeholder: "Enter billing address" },
+      { value: "notes", label: "Notes", type: "text", placeholder: "Enter notes" },
+    ];
+  }, [vendorCredits]);
   const fetchData = async (forceSidebar = false) => {
     if (isInitialLoad.current && !vendorCredit) setIsLoading(true);
     try {
@@ -159,6 +225,225 @@ export default function VendorCreditDetail() {
     }
   };
 
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchData(true);
+    } finally {
+      setIsRefreshing(false);
+      setSidebarMoreMenuOpen(false);
+    }
+  };
+
+  const handleSortSelect = (sortOption: string) => {
+    const sortMap: any = {
+      "Credit Note #": "creditNote",
+      "Date": "date",
+      "Vendor Name": "vendor",
+      "Amount": "amount",
+      "Status": "status"
+    };
+    const sortKey = sortMap[sortOption] || "date";
+    if (selectedSort === sortKey) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSelectedSort(sortKey);
+      setSortDirection("desc");
+    }
+    setSortSubmenuOpen(false);
+  };
+
+  const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.checked) {
+      setSelectedCredits(filteredCredits.map((credit: any) => String(credit.id || credit._id)));
+      return;
+    }
+    setSelectedCredits([]);
+  };
+
+  const handleSelectItem = (creditId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    event.stopPropagation();
+    const normalizedId = String(creditId);
+    if (event.target.checked) {
+      setSelectedCredits((prev) => Array.from(new Set([...prev, normalizedId])));
+    } else {
+      setSelectedCredits((prev) => prev.filter((id: string) => id !== normalizedId));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedCredits([]);
+    setBulkActionsOpen(false);
+  };
+
+  const handleBulkUpdate = () => {
+    if (!selectedCredits.length) return;
+    setBulkActionsOpen(false);
+    setShowBulkUpdateModal(true);
+  };
+
+  const handleBulkUpdateSubmit = async (field: any, value: any) => {
+    const fieldMap: Record<string, string> = {
+      creditNote: "vendorCreditNumber",
+      date: "date",
+      notes: "notes",
+      vendorName: "vendorName",
+      currency: "currency",
+      status: "status",
+    };
+    const targetField = fieldMap[field] || field;
+
+    try {
+      await Promise.all(
+        selectedCredits.map((creditId: string) =>
+          vendorCreditsAPI.update(creditId, {
+            [targetField]:
+              targetField === "date"
+                ? new Date(value).toISOString()
+                : value,
+          })
+        )
+      );
+      await fetchData(true);
+      handleClearSelection();
+      setShowBulkUpdateModal(false);
+      toast.success(`Updated ${selectedCredits.length} vendor credit(s)`);
+      window.dispatchEvent(new Event("vendorCreditsUpdated"));
+    } catch (error: any) {
+      console.error("Error bulk updating vendor credits:", error);
+      toast.error(error?.message || "Failed to bulk update vendor credits");
+    }
+  };
+
+  const handleDownloadSelectedPdf = async () => {
+    if (!selectedCredits.length) return;
+    const selectedSet = new Set(selectedCredits.map(String));
+    const records = filteredCredits.filter((credit: any) => selectedSet.has(String(credit.id || credit._id)));
+    if (!records.length) return;
+
+    try {
+      setBulkActionsOpen(false);
+      await downloadVendorCreditsPaperPdf(records as any[], organizationInfo);
+    } catch (error: any) {
+      console.error("Error generating vendor credit PDF:", error);
+      toast.error(error?.message || "Failed to generate PDF");
+    }
+  };
+
+  const removeCreditsLocally = (idsToDelete: string[]) => {
+    const idSet = new Set(idsToDelete.map(String));
+    return vendorCredits.filter((credit: any) => !idSet.has(String(credit.id || credit._id)));
+  };
+
+  const deleteSelectedVendorCredits = async () => {
+    if (!selectedCredits.length) return;
+    const idsToDelete = selectedCredits.map(String);
+    const previousVendorCredits = vendorCredits;
+    const remainingCredits = removeCreditsLocally(idsToDelete);
+    const currentCreditId = String(vendorCredit?.id || vendorCredit?._id || id || "");
+    const isCurrentCreditDeleted = idsToDelete.includes(currentCreditId);
+    const nextCredit = remainingCredits[0];
+
+    try {
+      setVendorCredits(remainingCredits);
+      handleClearSelection();
+      toast.success("Vendor credit(s) deleted successfully");
+      window.dispatchEvent(new Event("vendorCreditsUpdated"));
+      window.dispatchEvent(new Event("storage"));
+
+      if (isCurrentCreditDeleted) {
+        if (nextCredit) {
+          navigate(`/purchases/vendor-credits/${nextCredit.id || nextCredit._id}`, {
+            replace: true,
+            state: {
+              vendorCredit: nextCredit,
+              vendorCredits: remainingCredits,
+            },
+          });
+        } else {
+          navigate("/purchases/vendor-credits", { replace: true });
+        }
+      }
+
+      void deleteVendorCreditsMutation.mutateAsync({ ids: idsToDelete }).catch((error: any) => {
+        console.error("Error deleting vendor credits:", error);
+        setVendorCredits(previousVendorCredits);
+        toast.error(error?.message || "Failed to delete vendor credits");
+      });
+    } catch (error: any) {
+      console.error("Error deleting vendor credits:", error);
+      toast.error(error?.message || "Failed to delete vendor credits");
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    const selectedCount = selectedCredits.length;
+    if (!selectedCount) return;
+
+    setBulkActionsOpen(false);
+    const toastId = `vendor-credit-detail-delete-${selectedCount}-${selectedCredits.join("-")}`;
+    notify.dismiss(toastId);
+    notify(
+      ({ closeToast }) => (
+        <div style={{ minWidth: 280 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "#1f2937", marginBottom: 8 }}>
+            Delete vendor credit
+          </div>
+          <div style={{ fontSize: 13, color: "#4b5563", lineHeight: 1.5, marginBottom: 14 }}>
+            Are you sure you want to delete {selectedCount} vendor credit(s)?
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => {
+                closeToast?.();
+                notify.dismiss(toastId);
+              }}
+              style={{
+                border: "1px solid #d0d7e2",
+                background: "#ffffff",
+                color: "#334155",
+                borderRadius: 8,
+                padding: "8px 14px",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                closeToast?.();
+                notify.dismiss(toastId);
+                await deleteSelectedVendorCredits();
+              }}
+              style={{
+                border: "1px solid #156372",
+                background: "#156372",
+                color: "#ffffff",
+                borderRadius: 8,
+                padding: "8px 14px",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      ),
+      {
+        toastId,
+        autoClose: false,
+        closeButton: false,
+        draggable: false,
+        position: "top-center",
+      }
+    );
+  };
   useEffect(() => {
     fetchData();
 
@@ -257,7 +542,7 @@ export default function VendorCreditDetail() {
     // Current total applied excluding this bill
     const currentApplied = Object.entries(creditApplications)
       .filter(([id]) => id !== billId)
-      .reduce((sum, [_, val]) => sum + (val as number), 0);
+      .reduce((sum: number, [_, val]) => sum + (val as number), 0);
 
     // Max allowed for this bill is min(bill balance, remaining available credits)
     const maxAllowed = Math.max(0, Math.min(balance, availableTotal - currentApplied));
@@ -270,7 +555,7 @@ export default function VendorCreditDetail() {
   };
 
   const calculateTotalCreditsApplied = () => {
-    return Object.values(creditApplications).reduce((sum, val) => sum + parseMoneyValue(val), 0);
+    return Object.values(creditApplications).reduce((sum: number, val: any) => sum + parseMoneyValue(val), 0);
   };
 
   const creditBalance = parseMoneyValue(vendorCredit?.balance ?? vendorCredit?.amount ?? 0);
@@ -307,30 +592,57 @@ export default function VendorCreditDetail() {
   };
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      const targetNode = event.target as Node | null;
+      if (dropdownRef.current && targetNode && !dropdownRef.current.contains(targetNode)) {
+        setDropdownOpen(false);
+      }
+      if (sidebarMoreMenuRef.current && targetNode && !sidebarMoreMenuRef.current.contains(targetNode)) {
+        setSidebarMoreMenuOpen(false);
+        setSortSubmenuOpen(false);
+        setImportSubmenuOpen(false);
+        setExportSubmenuOpen(false);
+      }
+      if (moreMenuRef.current && targetNode && !moreMenuRef.current.contains(targetNode)) {
         setMoreMenuOpen(false);
       }
-      if (pdfMenuRef.current && !pdfMenuRef.current.contains(event.target)) {
+      if (pdfMenuRef.current && targetNode && !pdfMenuRef.current.contains(targetNode)) {
         setPdfMenuOpen(false);
+      }
+      if (bulkActionsRef.current && targetNode && !bulkActionsRef.current.contains(targetNode)) {
+        setBulkActionsOpen(false);
       }
     };
 
-    if (moreMenuOpen || pdfMenuOpen) {
+    if (dropdownOpen || sidebarMoreMenuOpen || moreMenuOpen || pdfMenuOpen || bulkActionsOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [moreMenuOpen, pdfMenuOpen]);
+  }, [dropdownOpen, sidebarMoreMenuOpen, moreMenuOpen, pdfMenuOpen, bulkActionsOpen]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && selectedCredits.length > 0) {
+        handleClearSelection();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [selectedCredits.length]);
 
   // Format date
   const formatDate = (dateString: string | Date) => {
     if (!dateString) return "";
-    const date = new Date(typeof dateString === 'string' && !dateString.includes('T') ? dateString + "T00:00:00" : dateString);
+    const date =
+      typeof dateString === "string"
+        ? new Date(!dateString.includes("T") ? `${dateString}T00:00:00` : dateString)
+        : new Date(dateString.getTime());
     if (isNaN(date.getTime())) {
-      return dateString;
+      return String(dateString);
     }
     return date.toLocaleDateString("en-GB", {
       day: "2-digit",
@@ -340,26 +652,26 @@ export default function VendorCreditDetail() {
   };
 
   // Format currency
-  const formatCurrency = (amount, currency = "CAD") => {
+  const formatCurrency = (amount: string | number, currency = "CAD") => {
     const symbol = currency === "CAD" ? "$" : currency === "USD" ? "$" : currency === "AWG" ? "AWG" : currency === "USD" ? "USD" : currency;
-    const formattedAmount = parseFloat(amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formattedAmount = parseFloat(String(amount || 0)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return `${symbol}${formattedAmount}`;
   };
 
   // Calculate totals
   const calculateSubTotal = () => {
     if (!vendorCredit || !vendorCredit.items) return 0;
-    return vendorCredit.items.reduce((sum, item) => sum + (parseFloat(item.total || item.amount) || 0), 0);
+    return vendorCredit.items.reduce((sum: number, item: any) => sum + (parseFloat(item.total || item.amount) || 0), 0);
   };
 
   const calculateTaxAmount = () => {
     if (!vendorCredit || !vendorCredit.items) return 0;
     let taxTotal = 0;
-    vendorCredit.items.forEach(item => {
+    vendorCredit.items.forEach((item: any) => {
       if (item.tax) {
         const taxMatch = item.tax.match(/(\d+(?:\.\d+)?)/);
         const taxPercent = taxMatch ? parseFloat(taxMatch[1]) : 0;
-        if (vendorCredit.formData?.taxExclusive === "Tax Inclusive") {
+        if ((vendorCredit as any).formData?.taxExclusive === "Tax Inclusive") {
           const subtotal = parseFloat(item.quantity || 0) * parseFloat(item.unitPrice || item.rate || 0);
           taxTotal += (subtotal * taxPercent) / (100 + taxPercent);
         } else {
@@ -373,7 +685,7 @@ export default function VendorCreditDetail() {
   const calculateTotal = () => {
     const subTotal = calculateSubTotal();
     const taxAmount = calculateTaxAmount();
-    const adjustment = vendorCredit?.formData?.adjustment || 0;
+    const adjustment = (vendorCredit as any)?.formData?.adjustment || 0;
     return subTotal + taxAmount + adjustment;
   };
 
@@ -386,11 +698,11 @@ export default function VendorCreditDetail() {
 
   // Get vendor address
   const getVendorAddress = () => {
-    if (!vendor || !vendor.formData) return null;
-    const billing = vendor.formData;
+    if (!vendor || !(vendor as any).formData) return null;
+    const billing = (vendor as any).formData;
     return {
-      name: vendor.name,
-      email: billing.email || vendor.email || "",
+      name: (vendor as any).name,
+      email: billing.email || (vendor as any).email || "",
       country: billing.billingCountry || "",
       street1: billing.billingStreet1 || "",
       street2: billing.billingStreet2 || "",
@@ -415,12 +727,37 @@ export default function VendorCreditDetail() {
     if (!creditId) return;
     if (!window.confirm("Are you sure you want to delete this vendor credit?")) return;
 
+    const normalizedCreditId = String(creditId);
+    const previousVendorCredits = vendorCredits;
+    const previousVendorCredit = vendorCredit;
+    const remainingCredits = removeCreditsLocally([normalizedCreditId]);
+    const nextCredit = remainingCredits[0];
+
     try {
-      await vendorCreditsAPI.delete(String(creditId));
+      setVendorCredits(remainingCredits);
+      setSelectedCredits((prev) => prev.filter((selectedId: string) => selectedId !== normalizedCreditId));
       toast.success("Vendor credit deleted successfully");
       window.dispatchEvent(new Event("vendorCreditsUpdated"));
       window.dispatchEvent(new Event("storage"));
-      navigate("/purchases/vendor-credits");
+
+      if (nextCredit) {
+        navigate(`/purchases/vendor-credits/${nextCredit.id || nextCredit._id}`, {
+          replace: true,
+          state: {
+            vendorCredit: nextCredit,
+            vendorCredits: remainingCredits,
+          },
+        });
+      } else {
+        navigate("/purchases/vendor-credits", { replace: true });
+      }
+
+      void deleteVendorCreditsMutation.mutateAsync({ ids: [normalizedCreditId] }).catch((error: any) => {
+        console.error("Error deleting vendor credit:", error);
+        setVendorCredits(previousVendorCredits);
+        setVendorCredit(previousVendorCredit);
+        toast.error(error?.message || "Failed to delete vendor credit");
+      });
     } catch (error: any) {
       console.error("Error deleting vendor credit:", error);
       toast.error(error?.message || "Failed to delete vendor credit");
@@ -448,29 +785,6 @@ export default function VendorCreditDetail() {
 
   const getVendorCreditId = () => String(vendorCredit?.id || vendorCredit?._id || id || "");
 
-  const getCurrentUserName = () => {
-    try {
-      const rawUser = localStorage.getItem("user");
-      if (!rawUser) return "User";
-      const parsed = JSON.parse(rawUser);
-      return (
-        parsed?.name
-        || parsed?.fullName
-        || parsed?.displayName
-        || parsed?.email
-        || "User"
-      );
-    } catch {
-      return "User";
-    }
-  };
-
-  const getVendorCreditAttachments = () => {
-    if (Array.isArray(vendorCredit?.attachments)) return vendorCredit.attachments;
-    if (Array.isArray(vendorCredit?.attachedFiles)) return vendorCredit.attachedFiles;
-    return [];
-  };
-
   const persistVendorCreditPatch = async (patch: Record<string, any>) => {
     const creditId = getVendorCreditId();
     if (!creditId) {
@@ -494,85 +808,6 @@ export default function VendorCreditDetail() {
     window.dispatchEvent(new Event("storage"));
 
     return updated;
-  };
-
-  const readFileAsDataUrl = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-
-  const handleSaveComment = async () => {
-    const text = commentDraft.trim();
-    if (!text) {
-      toast.error("Please enter a comment.");
-      return;
-    }
-
-    const existingComments = Array.isArray(vendorCredit?.comments) ? vendorCredit.comments : [];
-    const newComment = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      text,
-      author: getCurrentUserName(),
-      createdAt: new Date().toISOString(),
-    };
-
-    setIsSavingComment(true);
-    try {
-      await persistVendorCreditPatch({ comments: [...existingComments, newComment] });
-      setCommentDraft("");
-      setShowCommentModal(false);
-      toast.success("Comment saved.");
-    } catch (error: any) {
-      console.error("Error saving vendor credit comment:", error);
-      toast.error(error?.message || "Failed to save comment.");
-    } finally {
-      setIsSavingComment(false);
-    }
-  };
-
-  const handleAttachmentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
-    if (!files.length) return;
-
-    const existingAttachments = getVendorCreditAttachments();
-
-    setIsUploadingAttachment(true);
-    try {
-      const attachments = await Promise.all(
-        files.map(async (file) => ({
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          name: file.name,
-          size: file.size,
-          type: file.type || "application/octet-stream",
-          url: await readFileAsDataUrl(file),
-          uploadedAt: new Date().toISOString(),
-        }))
-      );
-
-      await persistVendorCreditPatch({ attachments: [...existingAttachments, ...attachments] });
-      toast.success("Attachment uploaded.");
-    } catch (error: any) {
-      console.error("Error uploading vendor credit attachment:", error);
-      toast.error(error?.message || "Failed to upload attachment.");
-    } finally {
-      if (event.target) event.target.value = "";
-      setIsUploadingAttachment(false);
-    }
-  };
-
-  const handleDownloadAttachment = (attachment: any) => {
-    const attachmentUrl = String(attachment?.url || "");
-    if (!attachmentUrl) return;
-
-    const link = document.createElement("a");
-    link.href = attachmentUrl;
-    link.download = String(attachment?.name || "attachment");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   if (isLoading) {
@@ -615,15 +850,12 @@ export default function VendorCreditDetail() {
   const vendorAddress = getVendorAddress();
   const total = calculateTotal();
   const baseAmount = getBaseCurrencyAmount();
-  const vendorCreditComments = Array.isArray(vendorCredit?.comments) ? vendorCredit.comments : [];
-  const vendorCreditAttachments = getVendorCreditAttachments();
 
-  const styles = {
+  const styles: any = {
     container: {
       display: "flex",
       width: "100%",
-      height: "100vh",
-      overflow: "hidden",
+      minHeight: "100vh",
       backgroundColor: "#ffffff",
       position: "relative",
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
@@ -632,7 +864,6 @@ export default function VendorCreditDetail() {
       width: "280px",
       borderRight: "1px solid #e5e7eb",
       backgroundColor: "#ffffff",
-      overflowY: "auto" as const,
       display: "flex",
       flexDirection: "column" as const,
       flexShrink: 0,
@@ -646,16 +877,19 @@ export default function VendorCreditDetail() {
       backgroundColor: "#ffffff",
       position: "sticky" as const,
       top: 0,
-      zIndex: 10,
+      zIndex: 20,
     },
     sidebarTitle: {
       fontSize: "14px",
-      fontWeight: "500",
-      color: "#374151",
+      fontWeight: "600",
+      color: "#111827",
       display: "flex",
       alignItems: "center",
       gap: "4px",
       cursor: "pointer",
+      border: "none",
+      background: "transparent",
+      padding: 0,
     },
     sidebarActions: {
       display: "flex",
@@ -673,18 +907,100 @@ export default function VendorCreditDetail() {
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
+      flexShrink: 0,
     },
     sidebarMoreButton: {
       width: "32px",
       height: "32px",
       backgroundColor: "#ffffff",
-      border: "1px solid #e5e7eb",
+      border: "1px solid #d1d5db",
       borderRadius: "6px",
       cursor: "pointer",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      color: "#6b7280",
+      color: "#374151",
+      flexShrink: 0,
+    },
+    sidebarDropdown: {
+      position: "absolute" as const,
+      top: "calc(100% + 8px)",
+      left: 0,
+      minWidth: "220px",
+      backgroundColor: "#ffffff",
+      border: "1px solid #e5e7eb",
+      borderRadius: "8px",
+      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+      zIndex: 50,
+      padding: "8px 0",
+    },
+    sidebarDropdownItem: {
+      width: "100%",
+      padding: "10px 14px",
+      border: "none",
+      background: "transparent",
+      cursor: "pointer",
+      textAlign: "left" as const,
+      fontSize: "14px",
+      color: "#374151",
+    },
+    bulkActionButton: {
+      padding: "6px 10px",
+      fontSize: "12px",
+      color: "#374151",
+      backgroundColor: "#ffffff",
+      border: "1px solid #d1d5db",
+      borderRadius: "6px",
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      gap: "6px",
+      whiteSpace: "nowrap" as const,
+      minWidth: "98px",
+      flexShrink: 0,
+    },
+    selectionDivider: {
+      width: "1px",
+      height: "20px",
+      backgroundColor: "#e5e7eb",
+    },
+    selectedCountBadge: {
+      minWidth: "24px",
+      height: "24px",
+      borderRadius: "999px",
+      backgroundColor: "#eff6ff",
+      color: "#2563eb",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: "12px",
+      fontWeight: "600",
+    },
+    selectedCountText: {
+      fontSize: "12px",
+      color: "#374151",
+      fontWeight: "500",
+      whiteSpace: "nowrap" as const,
+      flexShrink: 0,
+    },
+    selectionCloseButton: {
+      background: "transparent",
+      border: "none",
+      color: "#ef4444",
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "4px",
+      flexShrink: 0,
+      marginLeft: "8px",
+    },
+    selectionHeaderInner: {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      width: "100%",
+      minWidth: 0,
     },
     creditItem: {
       padding: "16px",
@@ -742,7 +1058,6 @@ export default function VendorCreditDetail() {
       flex: 1,
       display: "flex",
       flexDirection: "column" as const,
-      overflow: "hidden",
       backgroundColor: "#ffffff",
     },
     topBar: {
@@ -752,6 +1067,9 @@ export default function VendorCreditDetail() {
       alignItems: "center",
       justifyContent: "space-between",
       backgroundColor: "#ffffff",
+      position: "sticky" as const,
+      top: 0,
+      zIndex: 20,
     },
     topBarLeft: {
       fontSize: "15px",
@@ -804,6 +1122,9 @@ export default function VendorCreditDetail() {
       alignItems: "center",
       gap: "8px",
       backgroundColor: "#f9fafb",
+      position: "sticky" as const,
+      top: "53px",
+      zIndex: 19,
     },
     actionButton: {
       display: "flex",
@@ -819,8 +1140,7 @@ export default function VendorCreditDetail() {
       cursor: "pointer",
     },
     scrollArea: {
-      flex: 1,
-      overflowY: "auto" as const,
+      flex: "0 0 auto",
       padding: "32px 32px 64px 32px",
       backgroundColor: "#f8f9fa",
     },
@@ -1134,8 +1454,8 @@ export default function VendorCreditDetail() {
       padding: "24px",
       overflowY: "auto" as const,
       flex: 1,
-      msOverflowStyle: "none",
-      scrollbarWidth: "none",
+      msOverflowStyle: "none" as const,
+      scrollbarWidth: "none" as const,
     },
     modalTopBar: {
       display: "flex",
@@ -1456,9 +1776,9 @@ export default function VendorCreditDetail() {
   const remainingCredits = Math.max(0, availableCredits - (totalAmountToCredit as number));
 
   // Format date for display
-  const formatDateDisplay = (dateString) => {
+  const formatDateDisplay = (dateString: string | Date) => {
     if (!dateString) return "";
-    const date = new Date(dateString);
+    const date = typeof dateString === 'string' ? new Date(dateString) : new Date(dateString.getTime());
     return date.toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "2-digit",
@@ -1517,38 +1837,145 @@ export default function VendorCreditDetail() {
 
       {/* Sidebar - Left Column */}
       <div style={styles.sidebar} className="hide-scrollbar">
-        <div style={styles.sidebarHeader}>
-          <div style={styles.sidebarTitle}>
-            All Vendor Credits
-            <ChevronDown size={14} />
+        {selectedCredits.length > 0 ? (
+          <div style={styles.sidebarHeader}>
+            <div style={styles.selectionHeaderInner} ref={bulkActionsRef}>
+              <input
+                type="checkbox"
+                checked={selectedCredits.length === filteredCredits.length && filteredCredits.length > 0}
+                onChange={handleSelectAll}
+                style={styles.creditItemCheckbox}
+              />
+              <div style={{ position: "relative" as const }}>
+                <button style={styles.bulkActionButton} onClick={() => setBulkActionsOpen((prev) => !prev)}>
+                  Bulk Actions <ChevronDown size={14} />
+                </button>
+                {bulkActionsOpen && (
+                  <div style={{ ...styles.moreDropdown, left: 0, right: "auto", top: "calc(100% + 8px)" } as CSSProperties}>
+                    <button style={styles.moreDropdownItem} onClick={handleBulkUpdate}>Bulk Update</button>
+                    <button style={styles.moreDropdownItem} onClick={handleDownloadSelectedPdf}>Print</button>
+                    <button style={styles.moreDropdownItem} onClick={handleDeleteSelected}>Delete</button>
+                  </div>
+                )}
+              </div>
+              <div style={styles.selectionDivider} />
+              <span style={styles.selectedCountBadge}>{selectedCredits.length}</span>
+              <span style={styles.selectedCountText}>Selected</span>
+              <button style={styles.selectionCloseButton} onClick={handleClearSelection}>
+                <X size={18} />
+              </button>
+            </div>
           </div>
-          <div style={styles.sidebarActions}>
-            <button style={styles.sidebarMoreButton} onClick={() => setMoreMenuOpen(!moreMenuOpen)}>
-              <ArrowUpDown size={14} />
-            </button>
-            <button style={styles.sidebarNewButton} onClick={() => navigate("/purchases/vendor-credits/new")}>
-              <Plus size={16} />
-            </button>
+        ) : (
+          <div style={styles.sidebarHeader}>
+            <div style={{ position: "relative" as const }} ref={dropdownRef}>
+              <button style={styles.sidebarTitle} onClick={() => setDropdownOpen(!dropdownOpen)}>
+                {selectedView === "All" ? "All Vendor Credits" : selectedView}
+                {dropdownOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+              {dropdownOpen && (
+                <div style={styles.sidebarDropdown}>
+                  <button style={styles.sidebarDropdownItem} onClick={() => { setSelectedView("All"); setDropdownOpen(false); }}>All</button>
+                  {["Draft", "Pending Approval", "Open", "Closed", "Void"].map((view) => (
+                    <button key={view} style={styles.sidebarDropdownItem} onClick={() => { setSelectedView(view); setDropdownOpen(false); }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                        <span>{view}</span>
+                        <Star size={14} style={{ color: "#9ca3af" }} />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={styles.sidebarActions}>
+              <button style={styles.sidebarNewButton} onClick={() => navigate("/purchases/vendor-credits/new")}>
+                <Plus size={16} />
+              </button>
+              <div style={styles.moreDropdownWrapper} ref={sidebarMoreMenuRef}>
+                <button style={styles.sidebarMoreButton} onClick={() => setSidebarMoreMenuOpen(!sidebarMoreMenuOpen)}>
+                  <MoreVertical size={16} />
+                </button>
+                {sidebarMoreMenuOpen && (
+                  <div style={styles.moreDropdown}>
+                    <div style={{ position: "relative" as const }} ref={sortSubmenuRef}>
+                      <button style={styles.moreDropdownItem} onClick={(e) => { e.stopPropagation(); setSortSubmenuOpen(!sortSubmenuOpen); setImportSubmenuOpen(false); setExportSubmenuOpen(false); }}>
+                        <ArrowUpDown size={14} /> Sort by <ChevronRight size={14} style={{ marginLeft: "auto" }} />
+                      </button>
+                      {sortSubmenuOpen && (
+                        <div style={{ ...styles.moreDropdown, position: "absolute" as const, top: 0, left: "calc(100% + 8px)" }}>
+                          {sortOptions.map((option) => {
+                            const sortMap: any = { "Credit Note #": "creditNote", "Date": "date", "Vendor Name": "vendor", "Amount": "amount", "Status": "status" };
+                            const isSelected = selectedSort === sortMap[option];
+                            return (
+                              <button key={option} style={styles.moreDropdownItem} onClick={(e) => { e.stopPropagation(); handleSortSelect(option); }}>
+                                <span>{option}</span>
+                                {isSelected ? <span style={{ marginLeft: "auto", color: "#156372" }}>{sortDirection === "asc" ? "?" : "?"}</span> : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ position: "relative" as const }} ref={importSubmenuRef}>
+                      <button style={styles.moreDropdownItem} onClick={(e) => { e.stopPropagation(); setImportSubmenuOpen(!importSubmenuOpen); setSortSubmenuOpen(false); setExportSubmenuOpen(false); }}>
+                        <Download size={14} /> Import <ChevronRight size={14} style={{ marginLeft: "auto" }} />
+                      </button>
+                      {importSubmenuOpen && (
+                        <div style={{ ...styles.moreDropdown, position: "absolute" as const, top: 0, left: "calc(100% + 8px)" }}>
+                          <button style={styles.moreDropdownItem} onClick={() => navigate("/purchases/vendor-credits/import/applied")}>Import Applied Vendor Credits</button>
+                          <button style={styles.moreDropdownItem} onClick={() => navigate("/purchases/vendor-credits/import/refunds")}>Import Refunds</button>
+                          <button style={styles.moreDropdownItem} onClick={() => navigate("/purchases/vendor-credits/import")}>Import Vendor Credits</button>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ position: "relative" as const }} ref={exportSubmenuRef}>
+                      <button style={styles.moreDropdownItem} onClick={(e) => { e.stopPropagation(); setExportSubmenuOpen(!exportSubmenuOpen); setSortSubmenuOpen(false); setImportSubmenuOpen(false); }}>
+                        <Upload size={14} /> Export <ChevronRight size={14} style={{ marginLeft: "auto" }} />
+                      </button>
+                      {exportSubmenuOpen && (
+                        <div style={{ ...styles.moreDropdown, position: "absolute" as const, top: 0, left: "calc(100% + 8px)" }}>
+                          <button style={styles.moreDropdownItem} onClick={() => { setExportModalType("vendor-credits"); setShowExportModal(true); setSidebarMoreMenuOpen(false); }}>Export Vendor Credits</button>
+                          <button style={styles.moreDropdownItem} onClick={() => { setExportModalType("applied"); setShowExportModal(true); setSidebarMoreMenuOpen(false); }}>Export Applied Vendor Credits</button>
+                          <button style={styles.moreDropdownItem} onClick={() => { setExportModalType("current-view"); setShowExportModal(true); setSidebarMoreMenuOpen(false); }}>Export Current View</button>
+                          <button style={styles.moreDropdownItem} onClick={() => { setExportModalType("refunds"); setShowExportModal(true); setSidebarMoreMenuOpen(false); }}>Export Refunds</button>
+                        </div>
+                      )}
+                    </div>
+                    <button style={styles.moreDropdownItem} onClick={() => navigate("/settings/vendor-credits")}><Settings size={14} /> Preferences</button>
+                    <button style={styles.moreDropdownItem} onClick={() => { setShowPaymentModeModal(true); setSidebarMoreMenuOpen(false); }}><CreditCard size={14} /> Payment Mode</button>
+                    <button style={styles.moreDropdownItem} onClick={handleRefresh} disabled={isRefreshing}><RefreshCw size={14} /> Refresh List</button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
 
-        {vendorCredits.map((credit: any) => (
+        {filteredCredits.map((credit: any) => (
           <div
             key={credit.id || credit._id}
             style={{
               ...styles.creditItem,
               ...(id === (credit.id || credit._id) ? styles.creditItemActive : {}),
+              ...(selectedCredits.includes(String(credit.id || credit._id)) ? { backgroundColor: "#eff6ff" } : {}),
             }}
-            onClick={() =>
+            onClick={(e) => {
+              if ((e.target as HTMLInputElement).type === "checkbox") return;
               navigate(`/purchases/vendor-credits/${credit.id || credit._id}`, {
                 state: {
                   vendorCredit: credit,
-                  vendorCredits,
+                  vendorCredits: filteredCredits,
                 },
-              })
-            }
+              });
+            }}
           >
-            <input type="checkbox" style={styles.creditItemCheckbox} onClick={(e) => e.stopPropagation()} />
+            <input
+              type="checkbox"
+              style={styles.creditItemCheckbox}
+              checked={selectedCredits.includes(String(credit.id || credit._id))}
+              onChange={(e) => handleSelectItem(String(credit.id || credit._id), e)}
+              onClick={(e) => e.stopPropagation()}
+            />
             <div style={styles.creditItemContent}>
               <div style={styles.creditItemMain}>
                 <span style={styles.creditItemVendor}>
@@ -1579,39 +2006,6 @@ export default function VendorCreditDetail() {
             <div style={styles.utilityIcon} title="Apply to bills">
               <Link2 size={16} />
             </div>
-            <div
-              style={styles.utilityIcon}
-              title="Add comment"
-              onClick={() => setShowCommentModal(true)}
-            >
-              <MessageSquare size={16} />
-              {vendorCreditComments.length > 0 && (
-                <span style={styles.utilityBadge}>{vendorCreditComments.length}</span>
-              )}
-            </div>
-            <div
-              style={{
-                ...styles.utilityIcon,
-                ...(isUploadingAttachment ? styles.utilityIconDisabled : {}),
-              }}
-              title="Attach files"
-              onClick={() => {
-                if (isUploadingAttachment) return;
-                attachmentInputRef.current?.click();
-              }}
-            >
-              <Paperclip size={16} />
-              {vendorCreditAttachments.length > 0 && (
-                <span style={styles.utilityBadge}>{vendorCreditAttachments.length}</span>
-              )}
-            </div>
-            <input
-              ref={attachmentInputRef}
-              type="file"
-              multiple
-              style={{ display: "none" }}
-              onChange={handleAttachmentUpload}
-            />
             <div style={{ ...styles.utilityIcon, color: "#156372" }} onClick={() => navigate("/purchases/vendor-credits")}>
               <X size={18} />
             </div>
@@ -1782,104 +2176,51 @@ export default function VendorCreditDetail() {
             </div>
           </div>
 
-          <div style={styles.metaPanelsWrapper}>
-            <div style={styles.metaPanel}>
-              <div style={styles.metaPanelHeader}>
-                <span style={styles.metaPanelTitle}>Comments ({vendorCreditComments.length})</span>
-                <button
-                  type="button"
-                  style={styles.metaPanelAction}
-                  onClick={() => setShowCommentModal(true)}
-                >
-                  Add Comment
-                </button>
-              </div>
-              {vendorCreditComments.length > 0 ? (
-                vendorCreditComments.map((comment: any) => (
-                  <div key={String(comment?.id || comment?._id || Math.random())} style={styles.metaItemCard}>
-                    <div style={styles.metaItemText}>{String(comment?.text || "").trim()}</div>
-                    <div style={styles.metaItemSubtext}>
-                      {comment?.author ? `${comment.author} • ` : ""}
-                      {formatDate(comment?.createdAt || comment?.date || new Date().toISOString())}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div style={styles.metaEmpty}>No comments yet.</div>
-              )}
-            </div>
 
-            <div style={styles.metaPanel}>
-              <div style={styles.metaPanelHeader}>
-                <span style={styles.metaPanelTitle}>Attachments ({vendorCreditAttachments.length})</span>
-                <button
-                  type="button"
-                  style={styles.metaPanelAction}
-                  disabled={isUploadingAttachment}
-                  onClick={() => attachmentInputRef.current?.click()}
-                >
-                  {isUploadingAttachment ? "Uploading..." : "Attach File"}
-                </button>
-              </div>
-              {vendorCreditAttachments.length > 0 ? (
-                vendorCreditAttachments.map((attachment: any) => (
-                  <div key={String(attachment?.id || attachment?._id || Math.random())} style={styles.metaItemCard}>
-                    <div>
-                      <div style={styles.metaItemText}>{attachment?.name || "Attachment"}</div>
-                      <div style={styles.metaItemSubtext}>
-                        {formatDate(attachment?.uploadedAt || new Date().toISOString())}
-                        {attachment?.size ? ` • ${(Number(attachment.size) / (1024 * 1024)).toFixed(2)} MB` : ""}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      style={styles.metaItemAction}
-                      onClick={() => handleDownloadAttachment(attachment)}
-                    >
-                      Download
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <div style={styles.metaEmpty}>No attachments yet.</div>
-              )}
-            </div>
-          </div>
         </div>
       </div>
 
-      {showCommentModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowCommentModal(false)}>
-          <div
-            style={{ ...styles.modal, maxWidth: "560px", width: "92%" }}
-            onClick={(e) => e.stopPropagation()}
-          >
+
+      {showExportModal && exportModalType && typeof document !== "undefined" && document.body && createPortal(
+        <ExportVendorCredits
+          onClose={() => {
+            setShowExportModal(false);
+            setExportModalType(null);
+          }}
+          exportType={exportModalType}
+          data={exportModalType === "current-view" ? filteredCredits : vendorCredits}
+        />,
+        document.body
+      )}
+
+      {showPaymentModeModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowPaymentModeModal(false)}>
+          <div style={{ ...styles.modal, maxWidth: "520px", width: "92%" }} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
-              <h2 style={styles.modalTitle}>Add Comment</h2>
-              <button style={styles.modalCloseButton} onClick={() => setShowCommentModal(false)}>
+              <h2 style={styles.modalTitle}>Payment Mode</h2>
+              <button style={styles.modalCloseButton} onClick={() => setShowPaymentModeModal(false)}>
                 <X size={20} />
               </button>
             </div>
-            <div style={{ ...styles.modalBody, paddingTop: "18px", paddingBottom: "18px" }}>
-              <textarea
-                value={commentDraft}
-                onChange={(e) => setCommentDraft(e.target.value)}
-                placeholder="Write your comment..."
-                style={styles.commentTextarea}
-              />
+            <div style={styles.modalBody}>
+              <p style={{ fontSize: "14px", color: "#6b7280", margin: 0 }}>
+                Configure payment modes for vendor credits. Payment modes determine how credits are applied to bills.
+              </p>
             </div>
             <div style={styles.modalFooter}>
-              <button style={{ ...styles.cancelButton, marginRight: "auto" }} onClick={() => setShowCommentModal(false)}>
-                Cancel
-              </button>
-              <button style={styles.saveButton} disabled={isSavingComment} onClick={handleSaveComment}>
-                {isSavingComment ? "Saving..." : "Save Comment"}
-              </button>
+              <button style={{ ...styles.cancelButton, marginRight: "auto" }} onClick={() => setShowPaymentModeModal(false)}>Close</button>
             </div>
           </div>
         </div>
       )}
-
+      <BulkUpdateModal
+        isOpen={showBulkUpdateModal}
+        onClose={() => setShowBulkUpdateModal(false)}
+        title="Bulk Update Vendor Credits"
+        fieldOptions={vendorCreditFieldOptions}
+        entityName="vendor credits"
+        onUpdate={handleBulkUpdateSubmit}
+      />
       {showApplyModal && (
         <div style={styles.modalOverlay} onClick={() => setShowApplyModal(false)}>
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -2009,3 +2350,15 @@ export default function VendorCreditDetail() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+

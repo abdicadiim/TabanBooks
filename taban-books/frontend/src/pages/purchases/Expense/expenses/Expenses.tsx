@@ -14,9 +14,9 @@ import {
   chartOfAccountsAPI,
   bankAccountsAPI,
   currenciesAPI,
-} from "../../../services/api";
+} from "../../../../services/api";
 import { useExpensesQuery } from "./expensesQueries";
-import { useCurrency } from "../../../hooks/useCurrency";
+import { useCurrency } from "../../../../hooks/useCurrency";
 import {
   ChevronDown,
   ChevronUp,
@@ -118,9 +118,9 @@ export default function Expenses() {
     "Task"
   ];
   const [isSearchTypeDropdownOpen, setIsSearchTypeDropdownOpen] = useState(false);
-  const searchTypeDropdownRef = useRef(null);
+  const searchTypeDropdownRef = useRef<HTMLDivElement | null>(null);
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
-  const filterDropdownRef = useRef(null);
+  const filterDropdownRef = useRef<HTMLDivElement | null>(null);
   const [searchModalData, setSearchModalData] = useState({
     // Customers
     displayName: "",
@@ -174,17 +174,17 @@ export default function Expenses() {
     orderNumber: ""
   });
 
-  const [notification, setNotification] = useState(null);
+  const [notification, setNotification] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportType, setExportType] = useState("expenses");
-  const dropdownRef = useRef(null);
-  const moreMenuRef = useRef(null);
-  const sortSubmenuRef = useRef(null);
-  const exportSubmenuRef = useRef(null);
-  const importSubmenuRef = useRef(null);
-  const uploadMenuRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const [hoveredMenuItem, setHoveredMenuItem] = useState(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const sortSubmenuRef = useRef<HTMLDivElement | null>(null);
+  const exportSubmenuRef = useRef<HTMLDivElement | null>(null);
+  const importSubmenuRef = useRef<HTMLDivElement | null>(null);
+  const uploadMenuRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [hoveredMenuItem, setHoveredMenuItem] = useState<string | null>(null);
   const expensesQuery = useExpensesQuery({ baseCurrencyCode: baseCurrency?.code });
   const refreshData = useCallback(async () => {
     setIsRefreshing(true);
@@ -314,7 +314,7 @@ export default function Expenses() {
     });
   };
 
-  const downloadSampleFile = (type) => {
+  const downloadSampleFile = (type: string) => {
     const headers = ["Expense Date", "Expense Account", "Amount", "Paid Through", "Vendor Name", "Customer Name", "Reference#", "Description"];
     const sampleData = [
       ["2023-11-01", "Office Supplies", "50.00", "Cash", "Sample Vendor", "Sample Customer", "REF-001", "Pens and notebooks"],
@@ -371,7 +371,7 @@ export default function Expenses() {
         status: Math.random() > 0.3 ? "UNREADABLE" : "SUCCESS",
         originalFile: f
       }));
-      navigate("/expenses/receipts", { state: { newFiles: fileArray } });
+      navigate("/purchases/expenses/receipts", { state: { newFiles: fileArray } });
     }
   };
 
@@ -1055,7 +1055,7 @@ export default function Expenses() {
   };
 
   /* Custom Views Integration */
-  const [customViews, setCustomViews] = useState([]);
+  const [customViews, setCustomViews] = useState<any[]>([]);
 
   useEffect(() => {
     setCustomViews(getExpenseCustomViews());
@@ -1137,7 +1137,7 @@ export default function Expenses() {
 
       if (customView) {
         filtered = expenses.filter(expense => {
-          return customView.criteria.every(criterion => {
+          return (customView as any).criteria.every((criterion: any) => {
             if (!criterion.field || !criterion.value) return true;
 
             let expenseValue = "";
@@ -1518,7 +1518,7 @@ export default function Expenses() {
       backgroundColor: "#ffffff",
     },
     tableHeader: {
-      backgroundColor: "#f9fafb",
+      backgroundColor: "#ffffff",
       borderBottom: "1px solid #e5e7eb",
     },
     tableHeaderCell: {
@@ -1597,7 +1597,7 @@ export default function Expenses() {
   };
 
   return (
-      <div className="flex flex-col h-[calc(100vh-72px)] w-full bg-[#f6f7fb] font-sans text-gray-800 antialiased relative overflow-hidden">
+      <div className="flex flex-col h-[calc(100vh-72px)] w-full bg-[#ffffff] font-sans text-gray-800 antialiased relative overflow-hidden">
       {/* Header */}
       {selectedExpenses.length === 0 && (
         <div className="flex-none border-b border-gray-100 bg-white px-6 py-6">
@@ -1605,20 +1605,20 @@ export default function Expenses() {
             <div className="flex flex-1 items-center gap-6">
               <button
                 className="cursor-pointer border-none bg-transparent py-2 text-base font-medium text-gray-500"
-                onClick={() => navigate("/expenses/receipts")}
+                onClick={() => navigate("/purchases/expenses/receipts")}
               >
                 Receipts Inbox
               </button>
               <div className="relative inline-block" ref={dropdownRef}>
                 <button
-                  className="flex cursor-pointer items-center gap-1.5 border-none border-b-2 border-b-blue-500 bg-transparent py-2 text-base font-bold text-gray-900"
+                  className="flex cursor-pointer items-center gap-1.5 border-none border-b-2 border-slate-900 bg-transparent py-2 text-base font-bold text-slate-900 transition-colors"
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                 >
                   {getDisplayText()}
                   {dropdownOpen ? (
-                    <ChevronUp size={18} className="text-blue-500" />
+                    <ChevronUp size={14} className="transition-transform duration-200 rotate-180" style={{ color: "#1b5e6a" }} />
                   ) : (
-                    <ChevronDown size={18} className="text-blue-500" />
+                    <ChevronDown size={14} className="transition-transform duration-200" style={{ color: "#1b5e6a" }} />
                   )}
                 </button>
                 {dropdownOpen && (
@@ -1647,7 +1647,7 @@ export default function Expenses() {
                       className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[#156372] hover:bg-gray-50"
                       onClick={() => {
                         setDropdownOpen(false);
-                        navigate("/expenses/custom-view/new");
+                        navigate("/purchases/expenses/custom-view/new");
                       }}
                     >
                       <PlusCircle size={16} className="text-[#156372]" />
@@ -1685,7 +1685,7 @@ export default function Expenses() {
               </div>
               <button
                 className="flex cursor-pointer items-center gap-1 rounded-md border-none bg-[#156372] px-4 py-2 text-sm font-medium text-white hover:bg-[#0f4f5a]"
-                onClick={() => navigate("/expenses/new")}
+                onClick={() => navigate("/purchases/expenses/new")}
               >
                 <Plus size={16} />
                 New
@@ -1760,7 +1760,7 @@ export default function Expenses() {
                             className="w-full px-4 py-2 text-left text-[13px] text-gray-900 hover:bg-gray-100"
                             onClick={() => {
                               setMoreMenuOpen(false);
-                              navigate("/expenses/import");
+                              navigate("/purchases/expenses/import");
                             }}
                           >
                             Import Expenses
@@ -1869,7 +1869,7 @@ export default function Expenses() {
       )}
 
       {/* Main content area */}
-      <div className="flex-1 overflow-auto bg-[#f6f7fb] min-h-0 custom-scrollbar">
+      <div className="flex-1 overflow-auto bg-[#ffffff] min-h-0 custom-scrollbar">
         {/* Action Bar - Shows when items are selected */}
         {selectedExpenses.length > 0 && (
           <div className="flex items-center justify-between border-b border-gray-100 bg-white px-4 py-3">
@@ -1915,7 +1915,7 @@ export default function Expenses() {
         )}
 
         <table className="w-full min-w-0 border-collapse table-fixed text-[13px] bg-white" style={{ minWidth: `${tableMinWidth}px` }}>
-            <thead className="sticky top-0 z-20 border-b border-gray-200 bg-[#f6f7fb]">
+            <thead className="sticky top-0 z-20 border-b border-gray-200 bg-[#ffffff]">
               <tr>
                 <th className="group/header relative px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500" style={{ width: columnWidths.select }}>
                   <div className="flex items-center gap-2">
@@ -2043,7 +2043,7 @@ export default function Expenses() {
                     onClick={(e) => {
                       // Don't navigate if clicking on checkbox
                       if ((e.target as HTMLInputElement).type !== "checkbox") {
-                        navigate(`/expenses/${expense.id}`);
+                        navigate(`/purchases/expenses/${expense.id}`);
                       }
                     }}
                   >

@@ -191,7 +191,80 @@ const InvoiceDetailSkeleton = () => (
 
 
 
-export default function InvoiceDetail() { // Start of component
+const toNumber = (value: any) => {
+  const parsed = parseFloat(String(value ?? 0));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const toEntityId = (value: any) => {
+  if (!value) return "";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (typeof value === "object") return String(value._id || value.id || "");
+  return "";
+};
+
+const getInvoiceTotalsMeta = (invoiceData: any) => {
+  const subTotal = toNumber(invoiceData?.subTotal);
+  const taxAmount = toNumber(invoiceData?.taxAmount);
+  const discountAmount = toNumber(invoiceData?.discountAmount);
+  const discountBase = toNumber(invoiceData?.discountBase || subTotal);
+  const isTaxInclusive = Boolean(invoiceData?.isTaxInclusive || invoiceData?.taxInclusive === "Tax Inclusive");
+  const shippingCharges = toNumber(invoiceData?.shippingCharges);
+  const adjustment = toNumber(invoiceData?.adjustment);
+  const roundOff = toNumber(invoiceData?.roundOff);
+  const total = toNumber(invoiceData?.total ?? invoiceData?.amount);
+  const paidAmount = toNumber(invoiceData?.amountPaid ?? invoiceData?.paidAmount);
+  const creditsApplied = toNumber(invoiceData?.creditsApplied);
+  const computedBalance = Math.max(0, total - paidAmount - creditsApplied);
+  const balance = invoiceData?.balanceDue !== undefined
+    ? toNumber(invoiceData.balanceDue)
+    : (invoiceData?.balance !== undefined ? toNumber(invoiceData.balance) : computedBalance);
+
+  const discountRate = discountAmount > 0 && discountBase > 0 ? (discountAmount / discountBase) * 100 : 0;
+  const discountLabel = discountAmount > 0 ? `Discount(${discountRate.toFixed(2)}%)` : "Discount";
+  const taxLabel = String(invoiceData?.taxName || "").trim() || (taxAmount > 0 ? (isTaxInclusive ? "Tax (Included)" : "Tax") : "");
+
+  return {
+    subTotal,
+    taxAmount,
+    discountAmount,
+    discountBase,
+    discountLabel,
+    taxLabel,
+    taxExclusive: invoiceData?.taxExclusive || "Tax Exclusive",
+    shippingCharges,
+    adjustment,
+    roundOff,
+    total,
+    paidAmount,
+    creditsApplied,
+    balance
+  };
+};
+
+const getInvoiceDisplayTotal = (invoiceData: any) => {
+  const toNumberLocal = (value: any) => {
+    const parsed = parseFloat(String(value ?? 0));
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  if (invoiceData?.total !== undefined && invoiceData?.total !== null) {
+    return toNumberLocal(invoiceData.total);
+  }
+  if (invoiceData?.amount !== undefined && invoiceData?.amount !== null) {
+    return toNumberLocal(invoiceData.amount);
+  }
+  const subTotal = toNumberLocal(invoiceData?.subTotal ?? invoiceData?.subtotal);
+  const tax = toNumberLocal(invoiceData?.taxAmount ?? invoiceData?.tax);
+  const discount = toNumberLocal(invoiceData?.discountAmount ?? invoiceData?.discount);
+  const shipping = toNumberLocal(invoiceData?.shippingCharges ?? invoiceData?.shipping);
+  const adjustment = toNumberLocal(invoiceData?.adjustment);
+  const roundOff = toNumberLocal(invoiceData?.roundOff);
+  return subTotal + tax - discount + shipping + adjustment + roundOff;
+};
+
+export default function InvoiceDetail() {
+
+ // Start of component
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -206,6 +279,13 @@ export default function InvoiceDetail() { // Start of component
   const [invoice, setInvoice] = useState<Invoice | null>(() =>
     preloadedInvoice ? ({ ...preloadedInvoice } as Invoice) : null
   );
+  
+  const invoiceTotalsMeta = getInvoiceTotalsMeta(invoice);
+  const { total, balance } = invoiceTotalsMeta;
+  const invoiceStatusKey = String(invoice?.status || "").toLowerCase().replace(/[\s-]+/g, "_").trim();
+  const isDebitNoteDocument = isDebitNoteView || Boolean((invoice as any)?.debitNote || (invoice as any)?.debitNoteNumber);
+  const canRecordPayment = !["paid", "void"].includes(invoiceStatusKey);
+
   const [invoices, setInvoices] = useState<Invoice[]>(() =>
     Array.isArray(preloadedInvoices) ? [...(preloadedInvoices as Invoice[])] : []
   );
@@ -1197,17 +1277,7 @@ export default function InvoiceDetail() { // Start of component
     });
   };
 
-  const toNumber = (value: any) => {
-    const parsed = parseFloat(String(value ?? 0));
-    return Number.isFinite(parsed) ? parsed : 0;
-  };
 
-  const toEntityId = (value: any) => {
-    if (!value) return "";
-    if (typeof value === "string" || typeof value === "number") return String(value);
-    if (typeof value === "object") return String(value._id || value.id || "");
-    return "";
-  };
 
   const getInvoiceNumberPrefix = (invoiceNumber: any) => {
     const raw = String(invoiceNumber || "").trim();
@@ -1342,83 +1412,6 @@ export default function InvoiceDetail() { // Start of component
     };
   };
 
-  const getInvoiceDisplayTotal = (invoiceData: any) => {
-    if (invoiceData?.total !== undefined && invoiceData?.total !== null) {
-      return toNumber(invoiceData.total);
-    }
-    if (invoiceData?.amount !== undefined && invoiceData?.amount !== null) {
-      return toNumber(invoiceData.amount);
-    }
-    const subTotal = toNumber(invoiceData?.subTotal ?? invoiceData?.subtotal);
-    const tax = toNumber(invoiceData?.taxAmount ?? invoiceData?.tax);
-    const discount = toNumber(invoiceData?.discountAmount ?? invoiceData?.discount);
-    const shipping = toNumber(invoiceData?.shippingCharges ?? invoiceData?.shipping);
-    const adjustment = toNumber(invoiceData?.adjustment);
-    const roundOff = toNumber(invoiceData?.roundOff);
-    return subTotal + tax - discount + shipping + adjustment + roundOff;
-  };
-
-  const getInvoiceTotalsMeta = (invoiceData: any) => {
-    const subTotal = toNumber(invoiceData?.subTotal ?? invoiceData?.subtotal ?? getInvoiceDisplayTotal(invoiceData));
-    const isTaxInclusive = String(invoiceData?.taxExclusive || "").toLowerCase() === "tax inclusive";
-    let taxAmount = toNumber(invoiceData?.taxAmount ?? invoiceData?.tax);
-    if (taxAmount <= 0 && Array.isArray(invoiceData?.items)) {
-      taxAmount = invoiceData.items.reduce((sum: number, item: any) => {
-        const lineTax = toNumber(item?.taxAmount);
-        if (lineTax > 0) return sum + lineTax;
-        const qty = toNumber(item?.quantity);
-        const rate = toNumber(item?.unitPrice ?? item?.rate ?? item?.price);
-        const lineBase = qty * rate;
-        const taxRate = toNumber(item?.taxRate);
-        if (taxRate <= 0 || lineBase <= 0) return sum;
-        if (isTaxInclusive) {
-          return sum + (lineBase - lineBase / (1 + taxRate / 100));
-        }
-        return sum + (lineBase * taxRate / 100);
-      }, 0);
-    }
-
-    const discountBase = Math.max(0, isTaxInclusive ? (subTotal - taxAmount) : subTotal);
-    let discountAmount = toNumber(invoiceData?.discountAmount);
-    const discountValue = toNumber(invoiceData?.discount);
-    if (discountAmount <= 0 && discountValue > 0) {
-      discountAmount = String(invoiceData?.discountType || "").toLowerCase() === "percent"
-        ? (discountBase * discountValue) / 100
-        : discountValue;
-    }
-
-    const shippingCharges = toNumber(invoiceData?.shippingCharges ?? invoiceData?.shipping);
-    const adjustment = toNumber(invoiceData?.adjustment);
-    const roundOff = toNumber(invoiceData?.roundOff);
-    const total = getInvoiceDisplayTotal(invoiceData);
-    const paidAmount = toNumber(invoiceData?.paidAmount ?? invoiceData?.amountPaid);
-    const creditsApplied = toNumber(invoiceData?.creditsApplied);
-    const computedBalance = Math.max(0, total - paidAmount - creditsApplied);
-    const balance = invoiceData?.balanceDue !== undefined
-      ? toNumber(invoiceData.balanceDue)
-      : (invoiceData?.balance !== undefined ? toNumber(invoiceData.balance) : computedBalance);
-
-    const discountRate = discountAmount > 0 && discountBase > 0 ? (discountAmount / discountBase) * 100 : 0;
-    const discountLabel = discountAmount > 0 ? `Discount(${discountRate.toFixed(2)}%)` : "Discount";
-    const taxLabel = String(invoiceData?.taxName || "").trim() || (taxAmount > 0 ? (isTaxInclusive ? "Tax (Included)" : "Tax") : "");
-
-    return {
-      subTotal,
-      taxAmount,
-      discountAmount,
-      discountBase,
-      discountLabel,
-      taxLabel,
-      taxExclusive: invoiceData?.taxExclusive || "Tax Exclusive",
-      shippingCharges,
-      adjustment,
-      roundOff,
-      total,
-      paidAmount,
-      creditsApplied,
-      balance
-    };
-  };
 
   const handleMarkAsSent = async () => {
     if (invoice) {
@@ -1542,7 +1535,7 @@ export default function InvoiceDetail() { // Start of component
 
   const handleSendEmailSubmit = async () => {
     if (!emailData.to || !emailData.subject) {
-      toast("Please fill in required fields (To and Subject)");
+      toast.error("Please fill in required fields (To and Subject)");
       return;
     }
 
@@ -1676,7 +1669,7 @@ export default function InvoiceDetail() { // Start of component
 
   const handleScheduleEmailSubmit = () => {
     if (!scheduleData.to || !scheduleData.subject || !scheduleData.date || !scheduleData.time) {
-      toast("Please fill in required fields (To, Subject, Date, and Time)");
+      toast.error("Please fill in required fields (To, Subject, Date, and Time)");
       return;
     }
     // TODO: Implement actual email sending
@@ -1719,7 +1712,7 @@ export default function InvoiceDetail() { // Start of component
 
   const handleGenerateLink = () => {
     if (!linkExpirationDate) {
-      toast("Please select an expiration date");
+      toast.error("Please select an expiration date");
       return;
     }
 
@@ -2931,14 +2924,14 @@ export default function InvoiceDetail() { // Start of component
   const handleFileUpload = (files: FileList | File[]) => {
     const validFiles = Array.from(files as ArrayLike<File>).filter(file => {
       if (file.size > 10 * 1024 * 1024) {
-        toast(`File ${file.name} is too large. Maximum size is 10MB.`);
+        toast.error(`File ${file.name} is too large. Maximum size is 10MB.`);
         return false;
       }
       return true;
     });
 
     if (invoiceAttachments.length + validFiles.length > 5) {
-      toast("Maximum 5 files allowed. Please remove some files first.");
+      toast.error("Maximum 5 files allowed. Please remove some files first.");
       return;
     }
 
@@ -3107,13 +3100,9 @@ export default function InvoiceDetail() { // Start of component
     return <InvoiceDetailSkeleton />;
   }
 
-  const invoiceTotalsMeta = getInvoiceTotalsMeta(invoice);
   const displayItems = normalizeInvoiceItems(invoice);
   const hasProjectItems = displayItems.some((item) => Boolean(item.projectName || item.projectId || item.project));
   const itemsTableTitle = hasProjectItems ? "Project Details" : "Item Table";
-  const invoiceStatusKey = String(invoice?.status || "").toLowerCase().replace(/[\s-]+/g, "_").trim();
-  const isDebitNoteDocument = isDebitNoteView || Boolean((invoice as any)?.debitNote || (invoice as any)?.debitNoteNumber);
-  const canRecordPayment = !["paid", "void"].includes(invoiceStatusKey);
   const showWhatsNext = !isDebitNoteView && canRecordPayment;
   const creditAppliedAmount = Number(invoiceTotalsMeta.creditsApplied) || 0;
   const retainerAppliedAmount = (() => {

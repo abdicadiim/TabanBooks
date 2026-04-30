@@ -31,6 +31,25 @@ const Z = {
     bgMain: "#f3f4f6",
 };
 
+interface User {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+}
+
+interface Role {
+    id: string;
+    name: string;
+}
+
+interface SelectedItem {
+    id: string | number;
+    name: string;
+    type: string;
+    email?: string;
+}
+
 const MOCK_USERS = [
     { id: 1, name: "Jirde Hussein Khalif", email: "jirde@taban.com", role: "Admin" },
     { id: 2, name: "Ibrahim Ahmed", email: "ibrahim@taban.com", role: "Editor" },
@@ -50,17 +69,17 @@ function UserRoleSelector() {
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [inputValue, setInputValue] = useState("");
     const [isInputFocused, setIsInputFocused] = useState(false);
-    const [selectedItems, setSelectedItems] = useState([]);
-    const inputRef = React.useRef(null);
+    const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
+    const inputRef = React.useRef<HTMLInputElement>(null);
 
     const toggleDropdown = () => setIsDropdownOpen(!isDropdownOpen);
-    const selectMode = (mode) => {
+    const selectMode = (mode: string) => {
         setSelectorMode(mode);
         setIsDropdownOpen(false);
         setInputValue("");
     };
 
-    const handleSelect = (item) => {
+    const handleSelect = (item: User | Role) => {
         if (!selectedItems.find(i => i.id === item.id)) {
             setSelectedItems([...selectedItems, { ...item, type: selectorMode }]);
         }
@@ -68,7 +87,7 @@ function UserRoleSelector() {
         setIsInputFocused(false);
     };
 
-    const handleRemove = (id) => {
+    const handleRemove = (id: string | number) => {
         setSelectedItems(selectedItems.filter(i => i.id !== id));
     };
 
@@ -85,7 +104,7 @@ function UserRoleSelector() {
             item.name.toLowerCase().includes(inputValue.toLowerCase())
         );
 
-    const highlightBorder = (focused) => focused ? `1px solid ${Z.primary}` : `1px solid ${Z.line}`;
+    const highlightBorder = (focused: boolean) => focused ? `1px solid ${Z.primary}` : `1px solid ${Z.line}`;
 
     return (
         <div style={{
@@ -282,7 +301,7 @@ export default function NewExpenseCustomView() {
         "is in", "is not in", "is empty", "is not empty"
     ];
 
-    const handleCriterionChange = (id, field, value) => {
+    const handleCriterionChange = (id: number, field: string, value: string) => {
         setFormData((prev) => ({
             ...prev,
             criteria: prev.criteria.map((c) =>
@@ -301,21 +320,21 @@ export default function NewExpenseCustomView() {
         }));
     };
 
-    const removeCriterion = (id) => {
+    const removeCriterion = (id: number) => {
         setFormData((prev) => ({
             ...prev,
             criteria: prev.criteria.filter((c) => c.id !== id),
         }));
     };
 
-    const moveColumnToSelected = (column) => {
+    const moveColumnToSelected = (column: string) => {
         setFormData((prev) => ({
             ...prev,
             selectedColumns: [...prev.selectedColumns, column],
         }));
     };
 
-    const moveColumnToAvailable = (column) => {
+    const moveColumnToAvailable = (column: string) => {
         if (requiredColumns.includes(column)) return;
         setFormData((prev) => ({
             ...prev,
@@ -323,20 +342,20 @@ export default function NewExpenseCustomView() {
         }));
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         console.log("Saving expense custom view:", formData);
 
         const success = saveExpenseCustomView(formData);
         if (success) {
-            navigate("/expenses");
+            navigate("/purchases/expenses");
         } else {
             alert("Failed to save custom view.");
         }
     };
 
     const handleClose = () => {
-        navigate("/expenses");
+        navigate("/purchases/expenses");
     };
 
     return (

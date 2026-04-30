@@ -441,7 +441,7 @@ export default function TaxListPage() {
             )}
 
             {/* Table */}
-            <div className="bg-white rounded-lg border border-gray-200 overflow-visible">
+            <div className="rounded-lg overflow-visible">
                 <table className="w-full">
                     <thead className="bg-gray-50 border-b">
                         <tr>
@@ -491,7 +491,7 @@ export default function TaxListPage() {
                                         <div className="relative inline-block tax-row-actions">
                                             <button
                                                 onClick={() => setRowMenuOpenId(rowMenuOpenId === item.id ? null : item.id)}
-                                                className={`h-6 w-6 rounded-full bg-[#3b82f6] text-white items-center justify-center transition ${rowMenuOpenId === item.id ? "inline-flex" : "hidden group-hover:inline-flex"}`}
+                                                className={`h-6 w-6 rounded-full bg-[#156372] text-white items-center justify-center transition ${rowMenuOpenId === item.id ? "inline-flex" : "hidden group-hover:inline-flex"}`}
                                             >
                                                 <ChevronDown size={14} />
                                             </button>

@@ -166,6 +166,7 @@ journalEntrySchema.index({ organization: 1, status: 1 });
 journalEntrySchema.index({ organization: 1, status: 1, date: 1 });
 journalEntrySchema.index({ organization: 1, createdAt: -1 });
 journalEntrySchema.index({ organization: 1, updatedAt: -1 });
+journalEntrySchema.index({ organization: 1, sourceType: 1, sourceId: 1 });
 registerDashboardHomeInvalidationHooks(journalEntrySchema);
 
 const JournalEntry = (mongoose.models.JournalEntry as mongoose.Model<IJournalEntry>) || mongoose.model<IJournalEntry>("JournalEntry", journalEntrySchema);

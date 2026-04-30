@@ -1047,7 +1047,6 @@ export default function PaymentDetail() {
             </div>
           </div>
         </div>
-      </div>
 
     </div>
   );

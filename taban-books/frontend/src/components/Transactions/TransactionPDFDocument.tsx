@@ -1,13 +1,74 @@
 import React from "react";
-import { formatCurrency, formatDate } from "../../utils/formatters"; // Adjust these imports based on existing project structure
+/**
+ * Formats a date string or Date object into a human-readable format (e.g., 29 Apr 2026)
+ */
+const formatDate = (date: Date | string | null | undefined): string => {
+  if (!date) return "";
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return "";
+  
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+/**
+ * Formats a number into a currency string
+ */
+const formatCurrency = (amount: number | string | undefined, currency: string = "SOS", locale: string = "en-US"): string => {
+  const num = Number(amount || 0);
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: currency,
+      minimumFractionDigits: 2,
+    }).format(num);
+  } catch (e) {
+    // Fallback if currency code is invalid
+    return `${currency} ${num.toLocaleString(locale, { minimumFractionDigits: 2 })}`;
+  }
+};
+
+
+interface TotalsMeta {
+  subTotal?: number | string;
+  taxAmount?: number | string;
+  taxLabel?: string;
+  discountAmount?: number | string;
+  discountLabel?: string;
+  shippingCharges?: number | string;
+  adjustment?: number | string;
+  roundOff?: number | string;
+  total?: number | string;
+  paidAmount?: number | string;
+  creditsApplied?: number | string;
+  balance?: number | string;
+  totalInWords?: string;
+}
 
 interface TransactionPDFDocumentProps {
   data: any;
   config: any;
   moduleType: string; // 'quotes', 'invoices', 'sales_orders', 'purchase_orders', etc.
   organization: any;
-  totalsMeta: any;
+  totalsMeta: TotalsMeta;
 }
+
+const moduleTitleMap: Record<string, string> = {
+  invoices: "INVOICE",
+  credit_notes: "CREDIT NOTE",
+  quotes: "QUOTE",
+  sales_receipts: "SALES RECEIPT",
+  recurring_invoices: "RECURRING INVOICE",
+  payments_received: "PAYMENT RECEIVED",
+  vendor_credits: "VENDOR CREDIT",
+  bills: "BILL",
+  purchase_orders: "PURCHASE ORDER",
+  payments_made: "PAYMENT MADE",
+  debit_notes: "DEBIT NOTE",
+};
 
 const TransactionPDFDocument: React.FC<TransactionPDFDocumentProps> = ({
   data,
@@ -22,7 +83,7 @@ const TransactionPDFDocument: React.FC<TransactionPDFDocumentProps> = ({
   const labels = hf.labels || {};
   const details = config.transactionDetails || {};
   const table = config.tableConfig || config.table || {};
-  const total = config.totalConfig || config.total || {};
+  const totalCfg = config.totalConfig || config.total || {};
 
   const isVisible = (section: any, field: string) => {
     const val = section?.[field];
@@ -40,28 +101,28 @@ const TransactionPDFDocument: React.FC<TransactionPDFDocumentProps> = ({
     return fallback;
   };
 
-  const fmt = (val: number) => {
-    const s = Number(val || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const symbol = data.currency || "SOS";
-    return total.currencyPosition === "after" ? `${s} ${symbol}` : `${symbol} ${s}`;
+  const fmt = (val: number | string | undefined) => {
+    const num = Number(val || 0);
+    return formatCurrency(num, data.currency || organization?.currency || "USD");
   };
 
   const statusRibbonConfig = (() => {
-    const s = (data?.status || "draft").toUpperCase();
+    const s = String(data?.status || "draft").toUpperCase();
     switch (s) {
       case "ACCEPTED":
       case "PAID": return { label: s, color: "#10B981" };
       case "DECLINED":
       case "VOID": return { label: s, color: "#EF4444" };
       case "SENT":
-      case "UNPAID": return { label: s, color: "#2563eb" };
+      case "UNPAID":
+      case "DUE": return { label: s, color: "#2563eb" };
       case "PARTIALLY_PAID": return { label: "PARTIALLY PAID", color: "#6366F1" };
       case "OVERDUE": return { label: "OVERDUE", color: "#F59E0B" };
       default: return { label: "DRAFT", color: "#9CA3AF" };
     }
   })();
 
-  const documentTitle = labelFor(hf, "documentTitle", moduleType.replace("_", " ").toUpperCase());
+  const documentTitle = labelFor(hf, "documentTitle", moduleTitleMap[moduleType.toLowerCase()] || moduleType.replace("_", " ").toUpperCase());
 
   return (
     <div
@@ -77,7 +138,8 @@ const TransactionPDFDocument: React.FC<TransactionPDFDocumentProps> = ({
         display: "flex",
         flexDirection: "column",
         boxShadow: "0 0 20px rgba(0,0,0,0.05)",
-        margin: "0 auto"
+        margin: "0 auto",
+        overflow: "hidden"
       }}
     >
       {/* Header Bar */}
@@ -88,7 +150,7 @@ const TransactionPDFDocument: React.FC<TransactionPDFDocumentProps> = ({
       )}
 
       <div style={{ 
-        padding: `${(hf.headerBgColor || hf.bgImage) ? "0.2in" : (config.general?.margins?.top || 0.7) + "in"} ${config.general?.margins?.right || 0.4}in 0 ${config.general?.margins?.left || 0.55}in`,
+        padding: `${(hf.headerBgColor || hf.bgImage) ? "0.2in" : (config.general?.margins?.top || 0.7) + "in"} ${config.general?.margins?.right || 0.4}in 0.5in ${config.general?.margins?.left || 0.55}in`,
         flex: 1,
         display: "flex",
         flexDirection: "column"
@@ -135,12 +197,12 @@ const TransactionPDFDocument: React.FC<TransactionPDFDocumentProps> = ({
                 color: details.orgNameColor || "#111827", 
                 marginBottom: "4px" 
               }}>
-                {organization?.name || "Organization Name"}
+                {organization?.name || organization?.displayName || "Organization Name"}
               </div>
             )}
             <div style={{ fontSize: "10pt", color: "#6b7280", lineHeight: "1.5" }}>
               {isVisible(details, "showOrgAddress") && (
-                <div>{organization?.address?.city || organization?.address?.country || "Somalia"}</div>
+                <div>{organization?.address?.city || organization?.address?.country || organization?.city || organization?.country || ""}</div>
               )}
               {isVisible(details, "showOrgEmail") && (
                 <div>{organization?.email || ""}</div>
@@ -148,7 +210,7 @@ const TransactionPDFDocument: React.FC<TransactionPDFDocumentProps> = ({
             </div>
           </div>
 
-          {/* Middle Column: QR / Logo Placeholder Area */}
+          {/* Middle Column: Logo Area */}
           <div style={{ width: "33%", display: "flex", justifyContent: "center" }}>
             {isVisible(details, "showOrgLogo") && (details.orgLogo || organization?.logo) && (
               <div style={{ padding: "8px", backgroundColor: "#f9fafb", border: "1px solid #f3f4f6", borderRadius: "4px" }}>
@@ -171,11 +233,11 @@ const TransactionPDFDocument: React.FC<TransactionPDFDocumentProps> = ({
               </div>
             )}
             <div style={{ fontSize: "14pt", fontWeight: "700", color: config.general?.fontColor || "#111827", marginTop: "-4px" }}>
-              {labelFor(labels, "numberField", moduleType.replace("_", " ").toUpperCase() + "#")} {data.number || data.id || "17"}
+              {labelFor(labels, "numberField", (moduleTitleMap[moduleType.toLowerCase()] || moduleType) + "#")} {data.number || data.invoiceNumber || data.id || ""}
             </div>
             <div style={{ fontSize: "10px", color: "#6b7280", marginTop: "4px" }}>
-              Phone: {organization?.phone || "000-000-0000"}<br />
-              Fax: {organization?.fax || "000-000-0000"}
+              {organization?.phone && <div>Phone: {organization.phone}</div>}
+              {organization?.fax && <div>Fax: {organization.fax}</div>}
             </div>
           </div>
         </div>
@@ -193,16 +255,16 @@ const TransactionPDFDocument: React.FC<TransactionPDFDocumentProps> = ({
                 fontWeight: "700", 
                 lineHeight: "1.2"
               }}>
-                {data.customerName || "Customer Name"}
+                {data.customerName || data.vendorName || "Customer Name"}
               </div>
               <div style={{ fontSize: "11px", color: "#4b5563", maxWidth: "400px", lineHeight: "1.5", marginTop: "4px" }}>
-                {data.billingAddress || ""}
+                {data.billingAddress || data.address || ""}
               </div>
             </div>
             <div style={{ textAlign: "right", fontSize: "11pt", color: config.general?.fontColor || "#111827" }}>
               <div className="flex justify-end gap-2">
                 <span className="font-semibold" style={{ color: config.general?.labelColor || "#6b7280" }}>Date:</span>
-                <span>{formatDate(data.date || data.createdAt)}</span>
+                <span>{formatDate(data.date || data.invoiceDate || data.createdAt)}</span>
               </div>
               {data.expiryDate && (
                 <div className="flex justify-end gap-2">
@@ -254,7 +316,7 @@ const TransactionPDFDocument: React.FC<TransactionPDFDocumentProps> = ({
                     <div style={{ fontSize: "9pt", color: "#6b7280", marginTop: "2px" }}>{item.description}</div>
                   </td>
                   <td style={{ padding: "12px 16px", textAlign: "right", verticalAlign: "top", color: table.rowFontColor || "#111827", fontSize: "10pt" }}>
-                    <div>{item.quantity?.toFixed(2)}</div>
+                    <div>{Number(item.quantity || 0).toFixed(2)}</div>
                     <div style={{ fontSize: "8pt", color: "#9ca3af" }}>{item.unit || "pcs"}</div>
                   </td>
                   <td style={{ padding: "12px 16px", textAlign: "right", verticalAlign: "top", color: table.rowFontColor || "#111827", fontSize: "10pt" }}>{fmt(item.rate || item.unitPrice || 0)}</td>
@@ -272,41 +334,76 @@ const TransactionPDFDocument: React.FC<TransactionPDFDocumentProps> = ({
         <div className="flex justify-end mb-10">
           <div style={{ 
             width: "360px", 
-            backgroundColor: total.showBg !== false ? (total.bgColor || "#ef4444") : "transparent",
+            backgroundColor: totalCfg.showBg !== false ? (totalCfg.bgColor || "#ef4444") : "transparent",
             padding: "24px", 
             borderRadius: "12px",
             boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)"
           }}>
             <div className="flex justify-between py-2 items-center">
-              <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.showBg !== false ? "#ffffff" : (total.fontColor || "#4b5563"), fontWeight: "600" }}>Sub Total</span>
-              <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.showBg !== false ? "#ffffff" : (total.fontColor || "#111827"), fontWeight: "700" }}>{fmt(totalsMeta.subTotal || 0)}</span>
+              <span style={{ fontSize: `${totalCfg.fontSize || 11}pt`, color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#4b5563"), fontWeight: "600" }}>Sub Total</span>
+              <span style={{ fontSize: `${totalCfg.fontSize || 11}pt`, color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#111827"), fontWeight: "700" }}>{fmt(totalsMeta.subTotal || 0)}</span>
             </div>
-            <div className="flex justify-between py-2 items-center">
-              <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.showBg !== false ? "#ffffff" : (total.fontColor || "#4b5563"), fontWeight: "600" }}>{totalsMeta.taxLabel || "Tax"}</span>
-              <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.showBg !== false ? "#ffffff" : (total.fontColor || "#111827"), fontWeight: "700" }}>{fmt(totalsMeta.taxAmount || 0)}</span>
-            </div>
-            <div className="flex justify-between py-2 items-center">
-              <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.showBg !== false ? "#ffffff" : (total.fontColor || "#4b5563"), fontWeight: "600" }}>Shipping charge</span>
-              <span style={{ fontSize: `${total.fontSize || 11}pt`, color: total.showBg !== false ? "#ffffff" : (total.fontColor || "#111827"), fontWeight: "700" }}>{fmt(data.shippingCharges || 0)}</span>
-            </div>
+            
+            {Number(totalsMeta.taxAmount || 0) > 0 && (
+              <div className="flex justify-between py-2 items-center">
+                <span style={{ fontSize: `${totalCfg.fontSize || 11}pt`, color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#4b5563"), fontWeight: "600" }}>{totalsMeta.taxLabel || "Tax"}</span>
+                <span style={{ fontSize: `${totalCfg.fontSize || 11}pt`, color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#111827"), fontWeight: "700" }}>{fmt(totalsMeta.taxAmount || 0)}</span>
+              </div>
+            )}
+
+            {Number(totalsMeta.discountAmount || 0) > 0 && (
+              <div className="flex justify-between py-2 items-center">
+                <span style={{ fontSize: `${totalCfg.fontSize || 11}pt`, color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#4b5563"), fontWeight: "600" }}>{totalsMeta.discountLabel || "Discount"}</span>
+                <span style={{ fontSize: `${totalCfg.fontSize || 11}pt`, color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#111827"), fontWeight: "700" }}>-{fmt(totalsMeta.discountAmount || 0)}</span>
+              </div>
+            )}
+
+            {Number(data.shippingCharges || 0) > 0 && (
+              <div className="flex justify-between py-2 items-center">
+                <span style={{ fontSize: `${totalCfg.fontSize || 11}pt`, color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#4b5563"), fontWeight: "600" }}>Shipping charge</span>
+                <span style={{ fontSize: `${totalCfg.fontSize || 11}pt`, color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#111827"), fontWeight: "700" }}>{fmt(data.shippingCharges || 0)}</span>
+              </div>
+            )}
+
             <div className="flex justify-between py-4 mt-4 border-t border-white/20">
-              <span style={{ fontSize: `${(total.fontSize || 12) + 2}pt`, fontWeight: "800", color: "#ffffff", textTransform: "uppercase" }}>Total</span>
-              <span style={{ fontSize: `${(total.fontSize || 12) + 2}pt`, fontWeight: "800", color: "#ffffff" }}>{fmt(totalsMeta.total || 0)}</span>
+              <span style={{ fontSize: `${(totalCfg.fontSize || 12) + 2}pt`, fontWeight: "800", color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#111827"), textTransform: "uppercase" }}>Total</span>
+              <span style={{ fontSize: `${(totalCfg.fontSize || 12) + 2}pt`, fontWeight: "800", color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#111827") }}>{fmt(totalsMeta.total || 0)}</span>
             </div>
+
+            {Number(totalsMeta.creditsApplied || 0) > 0 && (
+              <div className="flex justify-between py-2 items-center border-t border-white/10 mt-2">
+                <span style={{ fontSize: "10pt", color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#4b5563"), fontWeight: "600" }}>Credits Applied</span>
+                <span style={{ fontSize: "10pt", color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#111827"), fontWeight: "700" }}>{fmt(totalsMeta.creditsApplied || 0)}</span>
+              </div>
+            )}
+
+            {Number(totalsMeta.paidAmount || 0) > 0 && (
+              <div className="flex justify-between py-2 items-center">
+                <span style={{ fontSize: "10pt", color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#4b5563"), fontWeight: "600" }}>Payment Made</span>
+                <span style={{ fontSize: "10pt", color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#111827"), fontWeight: "700" }}>{fmt(totalsMeta.paidAmount || 0)}</span>
+              </div>
+            )}
+
+            {totalsMeta.balance !== undefined && (
+              <div className="flex justify-between py-2 mt-2 border-t border-white/20">
+                <span style={{ fontSize: "11pt", fontWeight: "800", color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#111827") }}>Balance Due</span>
+                <span style={{ fontSize: "11pt", fontWeight: "800", color: totalCfg.showBg !== false ? "#ffffff" : (totalCfg.fontColor || "#111827") }}>{fmt(totalsMeta.balance || 0)}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {total.showAmountInWords && (
+        {totalCfg.showAmountInWords && totalsMeta.totalInWords && (
           <div className="mb-8" style={{ fontSize: "11px", color: "#6b7280" }}>
             <span className="font-semibold" style={{ color: "#374151" }}>Total In Words: </span>
-            {totalsMeta.totalInWords || "N/A"}
+            {totalsMeta.totalInWords}
           </div>
         )}
 
         {/* Notes Section */}
         <div className="mt-auto pt-4" style={{ borderTop: `1px dashed ${config.general?.borderColor || "#e5e7eb"}` }}>
           <div style={{ fontSize: "12px", fontWeight: "700", color: config.general?.fontColor || "#111827", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.2px" }}>Notes</div>
-          <div style={{ fontSize: "10px", color: config.general?.labelColor || "#4b5563", lineHeight: "1.6" }}>{data.customerNotes || "Looking forward for your business."}</div>
+          <div style={{ fontSize: "10px", color: config.general?.labelColor || "#4b5563", lineHeight: "1.6" }}>{data.customerNotes || data.notes || "Looking forward for your business."}</div>
         </div>
       </div>
 

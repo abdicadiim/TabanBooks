@@ -749,6 +749,7 @@ const ItemsList = ({
               <div className="relative" ref={moreDropdownRef}>
                 <button
                   onClick={() => setMoreDropdownOpen(!moreDropdownOpen)}
+                  onMouseEnter={() => setMoreDropdownOpen(true)}
                   className="p-1.5 border border-gray-200 rounded hover:bg-gray-50 transition-colors bg-white shadow-sm"
                 >
                   <MoreHorizontal size={18} className="text-gray-500" />
@@ -760,6 +761,7 @@ const ItemsList = ({
                     <div className="relative">
                       <button
                         onClick={() => { setSortSubMenuOpen(!sortSubMenuOpen); setExportSubMenuOpen(false); }}
+                        onMouseEnter={() => { setSortSubMenuOpen(true); setExportSubMenuOpen(false); }}
                         className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${sortSubMenuOpen ? 'text-white rounded-md mx-2 w-[calc(100%-16px)] shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
                         style={sortSubMenuOpen ? { backgroundColor: '#334155' } : {}}
                       >
@@ -804,6 +806,7 @@ const ItemsList = ({
                     <div className="relative">
                       <button
                         onClick={() => { setExportSubMenuOpen(!exportSubMenuOpen); setSortSubMenuOpen(false); }}
+                        onMouseEnter={() => { setExportSubMenuOpen(true); setSortSubMenuOpen(false); }}
                         className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${exportSubMenuOpen ? 'text-white rounded-md mx-2 w-[calc(100%-16px)] shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
                         style={exportSubMenuOpen ? { backgroundColor: '#334155' } : {}}
                       >

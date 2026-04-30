@@ -261,34 +261,8 @@ export const createExpense = async (req: AuthRequest, res: Response): Promise<vo
 
     // Create Journal Entry
     try {
-      const journalEntryNumber = await generateJournalEntryNumber(orgId);
-      const journalEntry = await JournalEntry.create({
-        organization: orgId,
-        date: expense.date,
-        reference: expense.reference_number,
-        entryNumber: journalEntryNumber,
-        description: `Expense: ${expense.reference_number} - ${expense.description || ''}`,
-        status: "posted",
-        currency: expense.currency_code || "KES",
-        sourceId: expense._id,
-        sourceType: "expense",
-        lines: [
-          {
-            account: expense.account_id.toString(),
-            accountName: expense.account_name,
-            description: `Expense: ${expense.account_name}`,
-            debit: expense.amount,
-            credit: 0
-          },
-          {
-            account: expense.paid_through_account_id.toString(),
-            accountName: expense.paid_through_account_name,
-            description: `Payment for Expense: ${expense.reference_number}`,
-            debit: 0,
-            credit: expense.amount
-          }
-        ]
-      });
+      const { createJournalEntryForExpense } = await import("../utils/expenseAccounting.js");
+      const journalEntry = await createJournalEntryForExpense(expense, orgId);
 
       // Link Journal Entry to Expense
       expense.journalEntryId = journalEntry._id as any;

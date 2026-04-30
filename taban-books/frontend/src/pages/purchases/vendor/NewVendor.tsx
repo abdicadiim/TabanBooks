@@ -21,6 +21,7 @@ import {
   MoreVertical,
   Settings,
   Search,
+  Loader2,
 } from "lucide-react";
 import PaymentTermsDropdown from "./PaymentTermsDropdown";
 import ConfigurePaymentTermsModal from "./ConfigurePaymentTermsModal";
@@ -111,6 +112,87 @@ type VendorFormData = {
   skypeName: string;
   facebook: string;
 };
+
+const PENDING_VENDOR_STORAGE_KEY = "pending-vendor-save";
+
+type VendorCacheRecord = {
+  id: string;
+  _id: string;
+  displayName: string;
+  name: string;
+  companyName: string;
+  email: string;
+  workPhone: string;
+  mobile: string;
+  currency: string;
+  paymentTerms: string;
+  accountsPayable: string;
+  vendorLanguage: string;
+  status: string;
+  active: boolean;
+  payables: number;
+  unusedCredits: number;
+  formData: Record<string, any>;
+};
+
+const readCachedVendors = (): VendorCacheRecord[] => {
+  try {
+    const cached = localStorage.getItem("vendors");
+    return cached ? JSON.parse(cached) : [];
+  } catch (error) {
+    return [];
+  }
+};
+
+const persistCachedVendors = (vendors: VendorCacheRecord[]) => {
+  try {
+    localStorage.setItem("vendors", JSON.stringify(vendors));
+  } catch (error) {
+    // Ignore cache write failures; the server response remains the source of truth.
+  }
+};
+
+const normalizeVendorCacheRecord = (vendor: any): VendorCacheRecord => ({
+  ...vendor,
+  id: String(vendor?.id || vendor?._id || ""),
+  _id: String(vendor?._id || vendor?.id || ""),
+  displayName: vendor?.displayName || vendor?.name || vendor?.companyName || "Vendor",
+  name: vendor?.name || vendor?.displayName || vendor?.companyName || "Vendor",
+  companyName: vendor?.companyName || "",
+  email: vendor?.email || "",
+  workPhone: vendor?.workPhone || "",
+  mobile: vendor?.mobile || "",
+  currency: vendor?.currency || "USD",
+  paymentTerms: vendor?.paymentTerms || "",
+  accountsPayable: vendor?.accountsPayable || "",
+  vendorLanguage: vendor?.vendorLanguage || "english",
+  status: vendor?.status || (vendor?.active === false ? "Inactive" : "Active"),
+  active: vendor?.active !== false,
+  payables: Number(vendor?.payables || 0),
+  unusedCredits: Number(vendor?.unusedCredits || 0),
+  formData: vendor?.formData || {},
+});
+
+const buildOptimisticVendorRecord = (vendorData: Record<string, any>, tempId: string): VendorCacheRecord =>
+  normalizeVendorCacheRecord({
+    id: tempId,
+    _id: tempId,
+    displayName: vendorData.displayName || vendorData.name || "Vendor",
+    name: vendorData.name || vendorData.displayName || "Vendor",
+    companyName: vendorData.companyName || "",
+    email: vendorData.email || "",
+    workPhone: vendorData.workPhone || "",
+    mobile: vendorData.mobile || "",
+    currency: vendorData.currency || "USD",
+    paymentTerms: vendorData.paymentTerms || "",
+    accountsPayable: vendorData.accountsPayable || "",
+    vendorLanguage: vendorData.vendorLanguage || "english",
+    status: "Active",
+    active: true,
+    payables: 0,
+    unusedCredits: 0,
+    formData: { ...vendorData },
+  });
 
 
 
@@ -813,9 +895,57 @@ export default function NewVendor() {
         console.log('Updating vendor with ID:', id);
         response = await vendorsAPI.update(id, vendorData);
       } else {
-        // Create new vendor via API
-        console.log('Creating new vendor');
-        response = await vendorsAPI.create(vendorData);
+        const tempVendorId = `temp-vendor-${Date.now()}`;
+        const optimisticVendor = buildOptimisticVendorRecord(vendorData, tempVendorId);
+        const cachedVendors = readCachedVendors();
+        persistCachedVendors([
+          optimisticVendor,
+          ...cachedVendors.filter((vendor) => String(vendor?.id || vendor?._id || "") !== tempVendorId),
+        ]);
+        try {
+          sessionStorage.setItem(PENDING_VENDOR_STORAGE_KEY, JSON.stringify(optimisticVendor));
+        } catch (storageError) {
+          // Ignore session cache failures and continue with the optimistic flow.
+        }
+        window.dispatchEvent(new Event("vendorSaved"));
+        navigate("/purchases/vendors", {
+          replace: true,
+          state: { pendingVendor: optimisticVendor },
+        });
+
+        void vendorsAPI.create(vendorData)
+          .then((createResponse: any) => {
+            if (!createResponse?.success) {
+              throw new Error(createResponse?.message || "Failed to save vendor");
+            }
+            const savedVendor = normalizeVendorCacheRecord(createResponse.data || vendorData);
+            const nextVendors = readCachedVendors().map((vendor) =>
+              String(vendor?.id || vendor?._id || "") === tempVendorId ? savedVendor : vendor
+            );
+            persistCachedVendors(nextVendors);
+            try {
+              sessionStorage.removeItem(PENDING_VENDOR_STORAGE_KEY);
+            } catch (storageError) {
+              // Ignore storage cleanup failures.
+            }
+            window.dispatchEvent(new Event("vendorSaved"));
+          })
+          .catch((backgroundError: unknown) => {
+            const nextVendors = readCachedVendors().filter(
+              (vendor) => String(vendor?.id || vendor?._id || "") !== tempVendorId
+            );
+            persistCachedVendors(nextVendors);
+            try {
+              sessionStorage.removeItem(PENDING_VENDOR_STORAGE_KEY);
+            } catch (storageError) {
+              // Ignore storage cleanup failures.
+            }
+            window.dispatchEvent(new Event("vendorSaved"));
+            toast.error(
+              `Failed to save vendor: ${backgroundError instanceof Error ? backgroundError.message : "Unknown error."}`
+            );
+          });
+        return;
       }
 
       console.log('Save response:', response);
@@ -1552,8 +1682,8 @@ export default function NewVendor() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="w-full px-6 py-5">
-        <form onSubmit={handleSubmit} className="w-full">
+      <div className="w-full px-6 pt-5 pb-0">
+        <form onSubmit={handleSubmit} className="w-full pb-32">
           <div className="border-b border-gray-200 bg-white px-0 pt-5 pb-6">
             <h2 className="text-[24px] font-medium tracking-tight text-gray-900">{isEdit ? "Edit Vendor" : "New Vendor"}</h2>
           </div>
@@ -3229,7 +3359,7 @@ export default function NewVendor() {
 
 
             {/* Action Buttons */}
-            <div className="sticky bottom-0 z-20 flex items-center gap-3 bg-transparent px-0 py-4">
+            <div className="fixed bottom-0 left-0 right-0 z-30 flex items-center gap-3 border-t border-gray-200 bg-white px-6 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] md:left-[260px]">
               <button
                 type="button"
                 onClick={handleCancel}
@@ -3239,8 +3369,10 @@ export default function NewVendor() {
               </button>
               <button
                 type="submit"
-                className="rounded-md bg-[#156372] px-5 py-2 text-sm font-medium text-white hover:bg-[#0d4a52]"
+                disabled={isSaving}
+                className="inline-flex items-center gap-2 rounded-md bg-[#6fd6b3] px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-[#5fc7a3] disabled:cursor-not-allowed disabled:opacity-90"
               >
+                {isSaving && <Loader2 size={16} className="animate-spin" />}
                 Save
               </button>
             </div>

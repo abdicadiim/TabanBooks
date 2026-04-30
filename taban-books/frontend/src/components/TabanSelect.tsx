@@ -210,10 +210,11 @@ export default function TabanSelect({
                                                 setIsOpen(false);
                                                 setSearchTerm("");
                                             }}
-                                            className={`w-full px-4 py-2.5 text-[13px] text-left flex items-center transition-colors group/item ${isSelected ? "" : "text-slate-600 hover:bg-[#eef8f9] hover:text-slate-900"}`}
+                                            className={`w-full px-4 py-2.5 text-[13px] text-left flex items-center transition-colors group/item hover:bg-[#f1f3f6] ${
+                                                isSelected ? "text-slate-900" : "text-slate-600 hover:text-slate-900"
+                                            }`}
                                             style={{
-                                                backgroundColor: isSelected ? "#eef8f9" : "transparent",
-                                                color: isSelected ? uiAccent : undefined,
+                                                backgroundColor: "transparent",
                                                 fontWeight: isSelected ? 600 : 400
                                             }}
                                         >
@@ -231,7 +232,7 @@ export default function TabanSelect({
                                                         />
                                                     )}
                                                     {isSelected && (
-                                                        <Check size={14} className="flex-shrink-0 transition-colors" style={{ color: uiAccent }} />
+                                                        <Check size={14} className="flex-shrink-0 text-slate-900 transition-colors" />
                                                     )}
                                                 </div>
                                             </div>

@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { recurringExpensesAPI, currenciesAPI, taxesAPI } from "../../../services/api";
+import { recurringExpensesAPI, currenciesAPI, taxesAPI } from "../../../../services/api";
 import { computeRecurringExpenseDisplayAmount } from "../shared/recurringExpenseModel";
 
 const extractCurrencies = (response: any): any[] => {

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import {
@@ -35,8 +36,40 @@ import { useCurrency } from "../../../hooks/useCurrency";
 import { API_BASE_URL, getToken } from "../../../services/auth";
 import { filterActiveRecords } from "../shared/activeFilters";
 import { accountantAPI, itemsAPI, locationsAPI, taxesAPI, vendorsAPI, vendorCreditsAPI } from "../../../services/api";
-import { writeCachedListResponse } from "../../../services/swrListCache";
+import { readCachedListResponse, writeCachedListResponse } from "../../../services/swrListCache";
 import toast from "react-hot-toast";
+import {
+  syncVendorCreditIntoQueries,
+  useSaveVendorCreditMutation,
+} from "./vendorCreditQueries";
+
+const VENDOR_CREDITS_LIST_CACHE_KEY = "vendor-credits-list-cache";
+const VENDOR_CREDIT_VENDORS_CACHE_KEY = "vendor-credit-form-vendors-cache";
+const VENDOR_CREDIT_ITEMS_CACHE_KEY = "vendor-credit-form-items-cache";
+const VENDOR_CREDIT_LOCATIONS_CACHE_KEY = "vendor-credit-form-locations-cache";
+const VENDOR_CREDIT_TAXES_CACHE_KEY = "vendor-credit-form-taxes-cache";
+const VENDOR_CREDIT_ACCOUNTS_CACHE_KEY = "vendor-credit-form-accounts-cache";
+
+const readSessionArrayCache = (key: string) => {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeSessionArrayCache = (key: string, value: any[]) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(Array.isArray(value) ? value : []));
+  } catch (error) {
+    console.error(`Failed to write session cache for ${key}:`, error);
+  }
+};
 
 const ACCOUNT_TYPE_OPTIONS = [
   "Asset",
@@ -67,6 +100,7 @@ const FIXED_ASSET_TYPE_OPTIONS = [
 
 export default function NewVendorCredit() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const location = useLocation();
   const { id: routeCreditId } = useParams();
   const {
@@ -145,11 +179,21 @@ export default function NewVendorCredit() {
   });
 
   // RESTORED MISSING STATES
-  const [vendors, setVendors] = useState<any[]>([]);
-  const [allVendors, setAllVendors] = useState<any[]>([]);
+  const [vendors, setVendors] = useState<any[]>(() => readSessionArrayCache(VENDOR_CREDIT_VENDORS_CACHE_KEY));
+  const [allVendors, setAllVendors] = useState<any[]>(() => readSessionArrayCache(VENDOR_CREDIT_VENDORS_CACHE_KEY));
   const [vendorSearch, setVendorSearch] = useState("");
   const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
-  const [items, setItems] = useState<any[]>([]);
+  const [items, setItems] = useState<any[]>(() => {
+    const cachedItems = readSessionArrayCache(VENDOR_CREDIT_ITEMS_CACHE_KEY);
+    if (cachedItems.length > 0) return cachedItems;
+    if (typeof window === "undefined") return [];
+    try {
+      const localItems = JSON.parse(localStorage.getItem("inv_items_v1") || "[]");
+      return Array.isArray(localItems) ? localItems : [];
+    } catch {
+      return [];
+    }
+  });
   const [itemSearch, setItemSearch] = useState<Record<string, string>>({});
   const [itemDropdownOpen, setItemDropdownOpen] = useState<Record<string, boolean>>({});
   const [locationSearch, setLocationSearch] = useState("");
@@ -200,6 +244,7 @@ export default function NewVendorCredit() {
   const [newAccountSearch, setNewAccountSearch] = useState("");
   const [parentAccountSearch, setParentAccountSearch] = useState("");
   const [fixedAssetTypeSearch, setFixedAssetTypeSearch] = useState("");
+  const saveVendorCreditMutation = useSaveVendorCreditMutation();
   // END RESTORED STATES
 
   const itemRefs = useRef<Record<string, any>>({});
@@ -259,9 +304,9 @@ export default function NewVendorCredit() {
   const fixedAssetTypeDropdownRef = useRef<HTMLDivElement>(null);
 
   // Load vendors from localStorage
-  const [taxes, setTaxes] = useState<any[]>([]);
-  const [accounts, setAccounts] = useState<any[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
+  const [taxes, setTaxes] = useState<any[]>(() => readSessionArrayCache(VENDOR_CREDIT_TAXES_CACHE_KEY));
+  const [accounts, setAccounts] = useState<any[]>(() => readSessionArrayCache(VENDOR_CREDIT_ACCOUNTS_CACHE_KEY));
+  const [locations, setLocations] = useState<any[]>(() => readSessionArrayCache(VENDOR_CREDIT_LOCATIONS_CACHE_KEY));
 
   const [apSearchTerm, setApSearchTerm] = useState("");
   const discountMode = enabledSettings?.discountSettings?.discountType ?? "transaction";
@@ -279,11 +324,21 @@ export default function NewVendorCredit() {
   useEffect(() => {
     const loadVendors = async () => {
       try {
+        const cachedResponse = await readCachedListResponse<any>("/vendors");
+        const cachedVendors = filterActiveRecords(cachedResponse?.data || cachedResponse?.vendors || cachedResponse || []);
+        if (cachedVendors.length > 0) {
+          setVendors(cachedVendors);
+          setAllVendors(cachedVendors);
+          writeSessionArrayCache(VENDOR_CREDIT_VENDORS_CACHE_KEY, cachedVendors);
+        }
+
         const response = await vendorsAPI.getAll();
         if (response && (response.code === 0 || response.success)) {
           const loadedVendors = filterActiveRecords(response.data || response.vendors || []);
           setVendors(loadedVendors);
           setAllVendors(loadedVendors);
+          writeSessionArrayCache(VENDOR_CREDIT_VENDORS_CACHE_KEY, loadedVendors);
+          await writeCachedListResponse("/vendors", response);
         }
       } catch (error) {
         console.error("Error loading vendors:", error);
@@ -296,10 +351,19 @@ export default function NewVendorCredit() {
   useEffect(() => {
     const loadLocations = async () => {
       try {
+        const cachedResponse = await readCachedListResponse<any>("/locations");
+        const cachedLocations = filterActiveRecords(cachedResponse?.data || cachedResponse || []) as any[];
+        if (cachedLocations.length > 0) {
+          setLocations(cachedLocations);
+          writeSessionArrayCache(VENDOR_CREDIT_LOCATIONS_CACHE_KEY, cachedLocations);
+        }
+
         const response = await locationsAPI.getAll();
         if (response && (response.code === 0 || response.success)) {
           const loadedLocations = filterActiveRecords(response.data || []) as any[];
           setLocations(loadedLocations);
+          writeSessionArrayCache(VENDOR_CREDIT_LOCATIONS_CACHE_KEY, loadedLocations);
+          await writeCachedListResponse("/locations", response);
           
           // Set default location if not already set
           if (!formData.location && loadedLocations.length > 0) {
@@ -691,9 +755,19 @@ export default function NewVendorCredit() {
   useEffect(() => {
     const loadItems = async () => {
       try {
+        const cachedResponse = await readCachedListResponse<any>("/items");
+        const cachedItems = filterActiveRecords(cachedResponse?.data || cachedResponse || []);
+        if (cachedItems.length > 0) {
+          setItems(cachedItems);
+          writeSessionArrayCache(VENDOR_CREDIT_ITEMS_CACHE_KEY, cachedItems);
+        }
+
         const response = await itemsAPI.getAll();
         if (response && (response.code === 0 || response.success)) {
-          setItems(filterActiveRecords(response.data || []));
+          const loadedItems = filterActiveRecords(response.data || []);
+          setItems(loadedItems);
+          writeSessionArrayCache(VENDOR_CREDIT_ITEMS_CACHE_KEY, loadedItems);
+          await writeCachedListResponse("/items", response);
         }
       } catch (error) {
         console.error("Error loading items:", error);
@@ -706,9 +780,19 @@ export default function NewVendorCredit() {
   useEffect(() => {
     const loadTaxes = async () => {
       try {
+        const cachedResponse = await readCachedListResponse<any>("/taxes/purchase");
+        const cachedTaxes = filterActiveRecords(cachedResponse?.data || cachedResponse || []);
+        if (cachedTaxes.length > 0) {
+          setTaxes(cachedTaxes);
+          writeSessionArrayCache(VENDOR_CREDIT_TAXES_CACHE_KEY, cachedTaxes);
+        }
+
         const response = await taxesAPI.getForTransactions("purchase");
         if (response && (response.code === 0 || response.success)) {
-          setTaxes(filterActiveRecords(response.data || []));
+          const loadedTaxes = filterActiveRecords(response.data || []);
+          setTaxes(loadedTaxes);
+          writeSessionArrayCache(VENDOR_CREDIT_TAXES_CACHE_KEY, loadedTaxes);
+          await writeCachedListResponse("/taxes/purchase", response);
         }
       } catch (error) {
         console.error("Error loading taxes:", error);
@@ -721,14 +805,29 @@ export default function NewVendorCredit() {
   useEffect(() => {
     const loadAccounts = async () => {
       try {
-        const response = await accountantAPI.getAccounts();
-        if (response && (response.code === 0 || response.success)) {
-          const accountsList = filterActiveRecords(response.data || response.accounts || []);
-          setAccounts(accountsList.map((acc: any) => ({
+        const cachedResponse = await readCachedListResponse<any>("/accounts");
+        const cachedAccounts = filterActiveRecords(cachedResponse?.data || cachedResponse?.accounts || cachedResponse || []);
+        if (cachedAccounts.length > 0) {
+          const mappedCachedAccounts = cachedAccounts.map((acc: any) => ({
             id: acc._id || acc.id,
             name: acc.accountName || acc.name,
             type: acc.accountType || acc.type
-          })));
+          }));
+          setAccounts(mappedCachedAccounts);
+          writeSessionArrayCache(VENDOR_CREDIT_ACCOUNTS_CACHE_KEY, mappedCachedAccounts);
+        }
+
+        const response = await accountantAPI.getAccounts();
+        if (response && (response.code === 0 || response.success)) {
+          const accountsList = filterActiveRecords(response.data || response.accounts || []);
+          const mappedAccounts = accountsList.map((acc: any) => ({
+            id: acc._id || acc.id,
+            name: acc.accountName || acc.name,
+            type: acc.accountType || acc.type
+          }));
+          setAccounts(mappedAccounts);
+          writeSessionArrayCache(VENDOR_CREDIT_ACCOUNTS_CACHE_KEY, mappedAccounts);
+          await writeCachedListResponse("/accounts", response);
         }
       } catch (error) {
         console.error("Error loading accounts:", error);
@@ -897,8 +996,13 @@ export default function NewVendorCredit() {
     (newItems[index] as any).stockQuantity = item.stockQuantity || 0;
     (newItems[index] as any).unit = item.unit || "";
     (newItems[index] as any).trackInventory = item.trackInventory || false;
-    // Leave account unselected so the user chooses from the grouped account list
-    newItems[index].account = "";
+    // Auto-fill the purchase account from the selected item, matching the vendor flow.
+    newItems[index].account =
+      item.purchaseAccount ||
+      item.account ||
+      item.accountName ||
+      item.purchase_account ||
+      "";
     // Set rate from item if available
     if (item.costPrice) {
       newItems[index].rate = item.costPrice;
@@ -1194,6 +1298,7 @@ export default function NewVendorCredit() {
 
   const handleSave = async (status: string) => {
     if (saveLoadingState) return;
+    const saveStartedAt = performance.now();
 
     // Validate Items
     const newErrors: Record<string, boolean> = {};
@@ -1278,29 +1383,144 @@ export default function NewVendorCredit() {
       };
 
       const creditId = routeCreditId || editCredit?._id || editCredit?.id;
-      const response = isEdit && creditId
-        ? await vendorCreditsAPI.update(creditId, payload)
-        : await vendorCreditsAPI.create(payload);
+      const optimisticRecord = {
+        id: creditId || `temp-vendor-credit-${Date.now()}`,
+        _id: creditId || `temp-vendor-credit-${Date.now()}`,
+        vendor: vendorId,
+        vendorName: formData.vendorName,
+        creditNote: formData.creditNote,
+        vendorCreditNumber: formData.creditNote,
+        orderNumber: formData.orderNumber,
+        date: formData.vendorCreditDate,
+        amount: calculateTotal(),
+        total: calculateTotal(),
+        balance: calculateTotal(),
+        status: payload.status,
+        currency: formData.currency,
+        notes: formData.notes,
+      };
 
-      if (response.success || response) {
-        const actionLabel = isEdit
-          ? (status === "Draft" ? "updated as draft" : "updated")
-          : (status === "Draft" ? "saved as draft" : "saved");
-        toast.success(`Vendor credit ${actionLabel} successfully`);
-        await syncItemCachesAfterVendorCreditSave(itemRows, payload.status);
-        // Remove from local storage to keep it clean if user previously had data there
-        localStorage.removeItem("vendor_credits");
-        window.sessionStorage.removeItem("vendor-credits-list-cache");
-        if (isEdit && creditId) {
-          navigate(`/purchases/vendor-credits/${creditId}`);
-        } else {
-          navigate("/purchases/vendor-credits");
+      const loadingToastId = toast.loading(
+        isEdit ? "Saving vendor credit..." : "Creating vendor credit..."
+      );
+
+      try {
+        const cachedCreditsRaw = window.sessionStorage.getItem(VENDOR_CREDITS_LIST_CACHE_KEY);
+        const cachedCredits = cachedCreditsRaw ? JSON.parse(cachedCreditsRaw) : [];
+        const nextCachedCredits = Array.isArray(cachedCredits)
+          ? (() => {
+              const optimisticId = String(optimisticRecord?.id || optimisticRecord?._id || "").trim();
+              const optimisticCreditNote = String(optimisticRecord?.creditNote || optimisticRecord?.vendorCreditNumber || "").trim();
+              const existingIndex = cachedCredits.findIndex((credit: any) => {
+                const existingId = String(credit?.id || credit?._id || "").trim();
+                const existingCreditNote = String(credit?.creditNote || credit?.vendorCreditNumber || "").trim();
+                return (
+                  (optimisticId && existingId === optimisticId) ||
+                  existingCreditNote === optimisticCreditNote
+                );
+              });
+
+              if (existingIndex >= 0) {
+                const updatedCredits = [...cachedCredits];
+                updatedCredits[existingIndex] = { ...updatedCredits[existingIndex], ...optimisticRecord };
+                return updatedCredits;
+              }
+
+              return [optimisticRecord, ...cachedCredits];
+            })()
+          : [optimisticRecord];
+
+        window.sessionStorage.setItem(
+          VENDOR_CREDITS_LIST_CACHE_KEY,
+          JSON.stringify(nextCachedCredits)
+        );
+      } catch (cacheError) {
+        console.error("Error priming vendor credit list cache after save:", cacheError);
+      }
+
+      saveVendorCreditMutation.mutate(
+        {
+          id: creditId ? String(creditId) : undefined,
+          data: payload,
+          optimisticRecord,
+        },
+        {
+          onSuccess: (response: any) => {
+            const clientSaveMs = Math.round(performance.now() - saveStartedAt);
+            const serverSaveMs = Number(response?.meta?.responseMs || 0);
+            console.log("[vendor-credit-save-timing]", {
+              mode: isEdit ? "update" : "create",
+              status,
+              clientSaveMs,
+              serverSaveMs,
+            });
+
+            const savedCredit = syncVendorCreditIntoQueries(queryClient, response) || response;
+            const actionLabel = isEdit
+              ? (status === "Draft" ? "updated as draft" : "updated")
+              : (status === "Draft" ? "saved as draft" : "saved");
+            toast.success(`Vendor credit ${actionLabel} successfully`, { id: loadingToastId });
+
+            try {
+              const cachedCreditsRaw = window.sessionStorage.getItem(VENDOR_CREDITS_LIST_CACHE_KEY);
+              const cachedCredits = cachedCreditsRaw ? JSON.parse(cachedCreditsRaw) : [];
+              const nextCachedCredits = Array.isArray(cachedCredits)
+                ? (() => {
+                    const savedId = String(savedCredit?.id || savedCredit?._id || "").trim();
+                    const existingIndex = cachedCredits.findIndex((credit: any) => {
+                      const existingId = String(credit?.id || credit?._id || "").trim();
+                      const existingCreditNote = String(credit?.creditNote || credit?.vendorCreditNumber || "").trim();
+                      return (
+                        (savedId && existingId === savedId) ||
+                        existingCreditNote === String(savedCredit?.creditNote || savedCredit?.vendorCreditNumber || "").trim()
+                      );
+                    });
+
+                    if (existingIndex >= 0) {
+                      const updatedCredits = [...cachedCredits];
+                      updatedCredits[existingIndex] = { ...updatedCredits[existingIndex], ...savedCredit };
+                      return updatedCredits;
+                    }
+
+                    return [savedCredit, ...cachedCredits];
+                  })()
+                : [savedCredit];
+
+              window.sessionStorage.setItem(
+                VENDOR_CREDITS_LIST_CACHE_KEY,
+                JSON.stringify(nextCachedCredits)
+              );
+            } catch (cacheError) {
+              console.error("Error syncing vendor credit list cache after save:", cacheError);
+            }
+
+            void syncItemCachesAfterVendorCreditSave(itemRows, payload.status).catch((cacheError) => {
+              console.error("Error syncing item caches after vendor credit save:", cacheError);
+            });
+            localStorage.removeItem("vendor_credits");
+          },
+          onError: (error: any) => {
+            console.error("Error saving vendor credit:", error);
+            toast.error(error.message || "Failed to save vendor credit", { id: loadingToastId });
+          },
         }
+      );
+
+      setSaveLoadingState(null);
+
+      if (isEdit && creditId) {
+        navigate(`/purchases/vendor-credits/${creditId}`, { replace: true });
+      } else {
+        navigate("/purchases/vendor-credits", {
+          replace: true,
+          state: {
+            pendingVendorCredit: optimisticRecord,
+          },
+        });
       }
     } catch (error: any) {
       console.error("Error saving vendor credit:", error);
       toast.error(error.message || "Failed to save vendor credit");
-    } finally {
       setSaveLoadingState(null);
     }
   };
@@ -1309,7 +1529,7 @@ export default function NewVendorCredit() {
     container: {
       width: "100%",
       backgroundColor: "#ffffff",
-      height: "100vh",
+      minHeight: "100vh",
       display: "flex",
       flexDirection: "column",
       fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
@@ -1332,7 +1552,6 @@ export default function NewVendorCredit() {
     content: {
       padding: "32px",
       flex: 1,
-      overflowY: "auto",
       backgroundColor: "#ffffff",
     },
     formSection: {
@@ -3290,14 +3509,24 @@ export default function NewVendorCredit() {
             onClick={() => handleSave("Draft")}
             disabled={!!saveLoadingState}
           >
-            {saveLoadingState === "Draft" ? "Saving..." : (isEdit ? "Update as Draft" : "Save as Draft")}
+            {saveLoadingState === "Draft" ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                <RotateCw size={14} style={{ animation: "spin 1s linear infinite" }} />
+                Saving...
+              </span>
+            ) : (isEdit ? "Update as Draft" : "Save as Draft")}
           </button>
           <button
             className="save-btn-hover" style={styles.saveOpenButton}
             onClick={() => handleSave("Open")}
             disabled={!!saveLoadingState}
           >
-            {saveLoadingState === "Open" ? "Saving..." : (isEdit ? "Update as Open" : "Save as Open")}
+            {saveLoadingState === "Open" ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                <RotateCw size={14} style={{ animation: "spin 1s linear infinite" }} />
+                Saving...
+              </span>
+            ) : (isEdit ? "Update as Open" : "Save as Open")}
           </button>
           <button style={styles.cancelButton} onClick={() => navigate("/purchases/vendor-credits")} disabled={!!saveLoadingState}>Cancel</button>
         </div>

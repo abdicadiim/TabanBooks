@@ -28,7 +28,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.0",
     "multer": "*",
-    "nodemailer": "^7.0.12"
+    "nodemailer": "^8.0.6"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

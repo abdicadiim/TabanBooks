@@ -224,12 +224,59 @@ const mapVendorForDetail = (vendorData: any, fallbackId?: string) => {
   };
 };
 
+const normalizeSidebarVendor = (vendorData: any) => ({
+  ...vendorData,
+  id: String(vendorData?._id || vendorData?.id || ""),
+  _id: vendorData?._id || vendorData?.id || "",
+  name:
+    vendorData?.displayName ||
+    vendorData?.name ||
+    vendorData?.companyName ||
+    `${vendorData?.firstName || ""} ${vendorData?.lastName || ""}`.trim() ||
+    "Vendor",
+  currency:
+    vendorData?.currency ||
+    vendorData?.currencyCode ||
+    vendorData?.formData?.currency ||
+    vendorData?.formData?.currencyCode,
+  payables:
+    Number(
+      vendorData?.payables ??
+      vendorData?.outstandingPayables ??
+      vendorData?.totalPayables ??
+      vendorData?.formData?.payables ??
+      0
+    ) || 0,
+  unusedVendorCredits:
+    Number(
+      vendorData?.unusedVendorCredits ??
+      vendorData?.unusedCredits ??
+      vendorData?.vendorCredits ??
+      vendorData?.formData?.unusedVendorCredits ??
+      0
+    ) || 0,
+});
+
 export default function VendorDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { code: baseCurrencyCode } = useCurrency();
-  const initialRouteVendor = location.state?.vendor ? mapVendorForDetail(location.state.vendor, id) : null;
+  const cachedVendorList = (() => {
+    try {
+      const raw = localStorage.getItem("vendors");
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
+  const cachedVendor =
+    cachedVendorList.find((vendorRecord: any) =>
+      [String(vendorRecord?._id || "").trim(), String(vendorRecord?.id || "").trim()].includes(String(id || "").trim())
+    ) || null;
+  const initialVendorSource = location.state?.vendor || cachedVendor;
+  const initialRouteVendor = initialVendorSource ? mapVendorForDetail(initialVendorSource, id) : null;
   const [vendor, setVendor] = useState<Vendor | null>(initialRouteVendor);
   const [isLoading, setIsLoading] = useState(!initialRouteVendor);
   const [organizationProfile, setOrganizationProfile] = useState<any>(null);
@@ -237,7 +284,7 @@ export default function VendorDetail() {
 
   // Note: We allow both MongoDB ObjectIds and legacy timestamp IDs
   // The backend will handle both formats
-  const [vendors, setVendors] = useState<any[]>([]);
+  const [vendors, setVendors] = useState<any[]>(() => cachedVendorList.map((vendorRecord: any) => normalizeSidebarVendor(vendorRecord)));
   function formatCurrency(amount: any, currency?: string) {
     const resolvedCode = String(currency || baseCurrencyCode || "USD").split(" - ")[0].trim();
     return `${resolvedCode}${parseFloat(amount || 0).toFixed(2)}`;
@@ -284,9 +331,18 @@ export default function VendorDetail() {
   const [isBulkActionsDropdownOpen, setIsBulkActionsDropdownOpen] = useState(false);
   const bulkActionsDropdownRef = useRef<HTMLDivElement>(null);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
-  const [selectedSidebarView, setSelectedSidebarView] = useState("All Vendors");
+  const [selectedSidebarView, setSelectedSidebarView] = useState("Active Vendors");
   const [isSidebarViewDropdownOpen, setIsSidebarViewDropdownOpen] = useState(false);
   const sidebarViewDropdownRef = useRef<HTMLDivElement>(null);
+  const sidebarViewOptions = [
+    "All Vendors",
+    "Active Vendors",
+    "Inactive Vendors",
+    "CRM Vendors",
+    "Vendor Portal Enabled",
+    "Vendor Portal Disabled",
+    "Duplicate Vendors",
+  ];
 
   // Additional state variables
   const [paymentsMade, setPaymentsMade] = useState<any[]>([]);
@@ -408,9 +464,9 @@ export default function VendorDetail() {
     salesReceipts: false
   });
   const [isSavingLinkedCustomer, setIsSavingLinkedCustomer] = useState(false);
-  const [contactDropdownRefs, setContactDropdownRefs] = useState<{ [key: string]: React.RefObject<HTMLDivElement> }>({});
+  const contactDropdownRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [openContactDropdown, setOpenContactDropdown] = useState<string | null>(null);
-  const [addressType, setAddressType] = useState<"billing" | "shipping">("billing");
+  const [addressType, setAddressType] = useState<"billing" | "shipping" | "additional">("billing");
   const [addressFormData, setAddressFormData] = useState({
     attention: "",
     country: "",
@@ -541,6 +597,43 @@ export default function VendorDetail() {
       return expenseDate >= startDate && expenseDate <= endDate;
     });
   }, [expenses, expensesDateRange]);
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+
+  const toggleLinkedCustomerSalesSection = (section: keyof typeof linkedCustomerSalesSections) => {
+    setLinkedCustomerSalesSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  const transactionNavOptions = [
+    { key: "bills", label: "Bills" },
+    { key: "paymentsMade", label: "Payments Made" },
+    { key: "purchaseOrders", label: "Purchase Orders" },
+    { key: "recurringBills", label: "Recurring Bills" },
+    { key: "expenses", label: "Expenses" },
+    { key: "recurringExpenses", label: "Recurring Expenses" },
+    { key: "projects", label: "Projects" },
+    { key: "journals", label: "Manual Journals" },
+    { key: "vendorCredits", label: "Vendor Credits" },
+    { key: "purchaseReceipts", label: "Purchase Receipts" },
+  ];
+
+  const handleTransactionNavSelect = (key: string, label: string) => {
+    setSelectedTransactionType({ key, label });
+    setIsTransactionNavDropdownOpen(false);
+    const element = transactionSectionRefs.current[key];
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
   const filteredExpensesTotal = filteredExpensesForOverview.reduce(
     (sum: number, expense: any) => sum + Number(expense.amount || expense.total || 0),
     0
@@ -784,19 +877,7 @@ export default function VendorDetail() {
           ? response.data
           : (response?.data?.data && Array.isArray(response.data.data) ? response.data.data : []));
 
-      setVendors(
-        (vendorsList || []).map((vend: any) => ({
-          ...vend,
-          id: String(vend?._id || vend?.id || ""),
-          _id: vend?._id || vend?.id || "",
-          name:
-            vend?.displayName ||
-            vend?.name ||
-            vend?.companyName ||
-            `${vend?.firstName || ""} ${vend?.lastName || ""}`.trim() ||
-            "Vendor",
-        }))
-      );
+      setVendors((vendorsList || []).map((vend: any) => normalizeSidebarVendor(vend)));
     } catch (error: any) {
     }
   };
@@ -876,7 +957,7 @@ export default function VendorDetail() {
     useTermsForAllStatements: false
   });
   // const customizeDropdownRef = useRef(null);
-  const organizationAddressFileInputRef = useRef(null);
+  const organizationAddressFileInputRef = useRef<HTMLInputElement>(null);
 
   // Contact Person Edit/Delete state
   // const [openContactDropdown, setOpenContactDropdown] = useState(null);
@@ -2376,7 +2457,7 @@ export default function VendorDetail() {
     }
   };
 
-  const formatDateForDisplay = (date) => {
+  const formatDateForDisplay = (date: Date) => {
     if (!date) return "";
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   };
@@ -2385,7 +2466,7 @@ export default function VendorDetail() {
   const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  const getDaysInMonth = (date) => {
+  const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
     const firstDay = new Date(year, month, 1);
@@ -2395,7 +2476,7 @@ export default function VendorDetail() {
     return { daysInMonth, startingDayOfWeek, year, month };
   };
 
-  const renderCalendar = (calendarMonth, selectedDate, onSelectDate, onPrevMonth, onNextMonth) => {
+  const renderCalendar = (calendarMonth: Date, selectedDate: Date, onSelectDate: (date: Date) => void, onPrevMonth: () => void, onNextMonth: () => void) => {
     const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth(calendarMonth);
     const days = [];
 
@@ -2429,14 +2510,14 @@ export default function VendorDetail() {
       });
     }
 
-    const isSelected = (date) => {
+    const isSelectedDate = (date: Date) => {
       return selectedDate &&
         date.getDate() === selectedDate.getDate() &&
         date.getMonth() === selectedDate.getMonth() &&
         date.getFullYear() === selectedDate.getFullYear();
     };
 
-    const isToday = (date) => {
+    const isToday = (date: Date) => {
       const today = new Date();
       return date.getDate() === today.getDate() &&
         date.getMonth() === today.getMonth() &&
@@ -2446,9 +2527,9 @@ export default function VendorDetail() {
     return (
       <div className="w-full bg-white border border-gray-200 rounded-lg shadow-sm p-4">
         <div className="flex items-center justify-between mb-3">
-          <button className="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded cursor-pointer" onClick={onPrevMonth}>Â«</button>
+          <button className="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded cursor-pointer" onClick={onPrevMonth}><ChevronLeft size={16} /></button>
           <span className="text-sm font-semibold text-gray-900">{months[month]} {year}</span>
-          <button className="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded cursor-pointer" onClick={onNextMonth}>Â»</button>
+          <button className="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded cursor-pointer" onClick={onNextMonth}><ChevronRight size={16} /></button>
         </div>
         <div className="grid grid-cols-7 gap-1 mb-2">
           {daysOfWeek.map(day => (
@@ -2460,8 +2541,8 @@ export default function VendorDetail() {
             <button
               key={index}
               className={`w-8 h-8 text-xs rounded cursor-pointer transition-colors ${!dayObj.isCurrentMonth ? 'text-gray-300' : 'text-gray-700 hover:bg-gray-100'
-                } ${isSelected(dayObj.date) ? 'bg-[#156372] text-white hover:bg-[#0D4A52]' : ''
-                } ${isToday(dayObj.date) && !isSelected(dayObj.date) ? 'bg-blue-100 text-teal-800 font-semibold' : ''
+                } ${isSelectedDate(dayObj.date) ? 'bg-[#156372] text-white hover:bg-[#0D4A52]' : ''
+                } ${isToday(dayObj.date) && !isSelectedDate(dayObj.date) ? 'bg-blue-100 text-teal-800 font-semibold' : ''
                 }`}
               onClick={() => onSelectDate(dayObj.date)}
             >
@@ -2552,9 +2633,9 @@ export default function VendorDetail() {
     }
   };
 
-  const applyFormatting = (format) => {
+  const applyFormatting = (format: string) => {
     // Simple text formatting implementation
-    const textarea = document.getElementById("comment-textarea");
+    const textarea = document.getElementById("comment-textarea") as HTMLTextAreaElement;
     if (textarea) {
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
@@ -2580,8 +2661,8 @@ export default function VendorDetail() {
     }
   };
 
-  const generateA4Statement = (data) => {
-    const { vendor, organizationProfile, transactions, startDate, endDate, statementPeriod } = data;
+  const generateA4Statement = (data: any) => {
+    const { vendor, organizationProfile, transactions = [], startDate, endDate, statementPeriod } = data;
 
     // Create A4-sized content
     const statementContent = `<!DOCTYPE html>
@@ -2724,7 +2805,7 @@ export default function VendorDetail() {
             </tr>
           </thead>
           <tbody>
-            ${transactions.map(transaction => `
+            ${transactions.map((transaction: any) => `
               <tr>
                 <td>${new Date(transaction.date).toLocaleDateString()}</td>
                 <td>${transaction.type}</td>
@@ -2746,16 +2827,18 @@ export default function VendorDetail() {
 
     // Create a new window and print
     const printWindow = window.open('', '_blank');
-    printWindow.document.write(statementContent);
-    printWindow.document.close();
+    if (printWindow) {
+      printWindow.document.write(statementContent);
+      printWindow.document.close();
 
-    // Wait for content to load, then print
-    printWindow.onload = function () {
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 500);
-    };
+      // Wait for content to load, then print
+      printWindow.onload = function () {
+        setTimeout(() => {
+          printWindow.print();
+          printWindow.close();
+        }, 500);
+      };
+    }
   };
 
   if (isLoading && !vendor) {
@@ -3409,7 +3492,7 @@ export default function VendorDetail() {
                                 onClick={(e) => {
                                   e.preventDefault();
                                   // Handle delete additional address
-                                  const updatedAddresses = vendor.additionalAddresses.filter((_, i) => i !== index);
+                                  const updatedAddresses = (vendor.additionalAddresses || []).filter((_, i) => i !== index);
                                   // Update vendor with new addresses array
                                 }}
                                 className="p-1 text-gray-600 hover:text-red-600 cursor-pointer"
@@ -3669,11 +3752,11 @@ export default function VendorDetail() {
                       <button
                         className="p-1 rounded cursor-pointer transition-all"
                         style={{ color: "#60a5fa" }}
-                        onMouseEnter={(e) => {
-                          e.target.style.backgroundColor = "rgba(96, 165, 250, 0.1)";
+                        onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
+                          e.currentTarget.style.backgroundColor = "#f3f4f6";
                         }}
-                        onMouseLeave={(e) => {
-                          e.target.style.backgroundColor = "transparent";
+                        onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
+                          e.currentTarget.style.backgroundColor = "transparent";
                         }}
                         onClick={() => setIsAddContactPersonModalOpen(true)}
                       >
@@ -3710,14 +3793,14 @@ export default function VendorDetail() {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setOpenContactDropdown(openContactDropdown === index ? null : index);
+                                    setOpenContactDropdown(openContactDropdown === String(index) ? null : String(index));
                                   }}
                                   className="p-1 text-gray-500 hover:text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                                   title="Settings"
                                 >
                                   <Settings size={16} />
                                 </button>
-                                {openContactDropdown === index && (
+                                {openContactDropdown === String(index) && (
                                   <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[120px]">
                                     <button
                                       onClick={() => {
@@ -3743,7 +3826,7 @@ export default function VendorDetail() {
                                     <button
                                       onClick={async () => {
                                         if (window.confirm("Are you sure you want to delete this contact person?")) {
-                                          const updatedContactPersons = vendor.contactPersons.filter((_, i) => i !== index);
+                                          const updatedContactPersons = (vendor.contactPersons || []).filter((_, i) => i !== index);
                                           const updatedVendor = {
                                             ...vendor,
                                             contactPersons: updatedContactPersons,
@@ -3813,7 +3896,7 @@ export default function VendorDetail() {
                       <User size={20} />
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm text-gray-700 mb-3">Vendor Portal allows your customers to keep track of all the transactions between them and your business. <a href="#" className="hover:underline transition-colors" style={{ color: "#156372" }} onMouseEnter={(e) => e.target.style.color = "#0D4A52"} onMouseLeave={(e) => e.target.style.color = "#156372"}>Learn More</a></p>
+                      <p className="text-sm text-gray-700 mb-3">Vendor Portal allows your customers to keep track of all the transactions between them and your business. <a href="#" className="hover:underline transition-colors" style={{ color: "#156372" }} onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.color = "#0D4A52"} onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.color = "#156372"}>Learn More</a></p>
                       <button
                         className="px-4 py-2 text-white rounded-md text-sm font-medium cursor-pointer transition-all hover:opacity-90"
                         style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
@@ -3967,8 +4050,8 @@ export default function VendorDetail() {
                         }}
                         className="text-sm hover:underline transition-colors"
                         style={{ color: "#156372" }}
-                        onMouseEnter={(e) => e.target.style.color = "#0D4A52"}
-                        onMouseLeave={(e) => e.target.style.color = "#156372"}
+                        onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.color = "#0D4A52"}
+                        onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.color = "#156372"}
                       >
                         Enter Opening Balance
                       </button>
@@ -4206,7 +4289,7 @@ export default function VendorDetail() {
               </button>
               {isTransactionNavDropdownOpen && (
                 <div className="absolute top-full left-0 mt-2 w-52 bg-white border border-gray-200 rounded-lg shadow-lg z-40 py-1">
-                  {transactionNavOptions.map((option) => (
+                  {transactionNavOptions.map((option: { key: string; label: string }) => (
                     <button
                       key={option.key}
                       className={`w-full text-left px-3 py-2 text-sm cursor-pointer ${
@@ -6605,7 +6688,7 @@ export default function VendorDetail() {
                   <button
                     onClick={async () => {
                       if (editingContactIndex !== null && vendor && id) {
-                        const updatedContactPersons = [...vendor.contactPersons];
+                        const updatedContactPersons = [...(vendor.contactPersons || [])];
                         updatedContactPersons[editingContactIndex] = { ...editContactData };
                         const updatedVendor = {
                           ...vendor,
@@ -7859,12 +7942,12 @@ export default function VendorDetail() {
                         ref={organizationAddressFileInputRef}
                         accept="image/*"
                         onChange={(e) => {
-                          const file = e.target.files[0];
+                          const file = e.target.files?.[0];
                           if (file) {
                             setLogoFile(file);
                             const reader = new FileReader();
                             reader.onloadend = () => {
-                              setLogoPreview(reader.result);
+                              setLogoPreview(reader.result as string);
                             };
                             reader.readAsDataURL(file);
                           }
@@ -8076,345 +8159,343 @@ export default function VendorDetail() {
       }
 
       {/* Address Modal */}
-      {
-        showAddressModal && typeof document !== 'undefined' && document.body && createPortal(
+      {showAddressModal && typeof document !== 'undefined' && document.body ? createPortal(
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 99999,
+          }}
+          onClick={() => setShowAddressModal(false)}
+        >
           <div
             style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              backgroundColor: "#ffffff",
+              borderRadius: "8px",
+              width: "100%",
+              maxWidth: "500px",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
-              zIndex: 99999,
-            }}
-            onClick={() => setShowAddressModal(false)}
-          >
-            <div
-              style={{
-                backgroundColor: "#ffffff",
-                borderRadius: "8px",
-                width: "100%",
-                maxWidth: "500px",
-                maxHeight: "90vh",
-                overflowY: "auto",
-                boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Modal Header */}
-              <div style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "20px 24px",
-                borderBottom: "1px solid #e5e7eb",
+              justifyContent: "space-between",
+              padding: "20px 24px",
+              borderBottom: "1px solid #e5e7eb",
+            }}>
+              <h2 style={{
+                fontSize: "18px",
+                fontWeight: "600",
+                color: "#111827",
+                margin: 0,
               }}>
-                <h2 style={{
-                  fontSize: "18px",
-                  fontWeight: "600",
-                  color: "#111827",
-                  margin: 0,
+                {addressType === "billing" ? "Billing Address" : "Shipping Address"}
+              </h2>
+              <button
+                onClick={() => setShowAddressModal(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "4px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <X size={20} style={{ color: "#6b7280" }} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: "24px" }}>
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{
+                  display: "block",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  color: "#374151",
+                  marginBottom: "8px",
                 }}>
-                  {addressType === "billing" ? "Billing Address" : "Shipping Address"}
-                </h2>
-                <button
-                  onClick={() => setShowAddressModal(false)}
+                  Attention
+                </label>
+                <input
+                  type="text"
+                  value={addressFormData.attention}
+                  onChange={(e) => setAddressFormData({ ...addressFormData, attention: e.target.value })}
                   style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "4px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <X size={20} style={{ color: "#6b7280" }} />
-                </button>
-              </div>
-
-              {/* Modal Body */}
-              <div style={{ padding: "24px" }}>
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{
-                    display: "block",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    color: "#374151",
-                    marginBottom: "8px",
-                  }}>
-                    Attention
-                  </label>
-                  <input
-                    type="text"
-                    value={addressFormData.attention}
-                    onChange={(e) => setAddressFormData({ ...addressFormData, attention: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "8px 12px",
-                      border: "1px solid #d1d5db",
-                      borderRadius: "6px",
-                      fontSize: "14px",
-                    }}
-                    placeholder=""
-                  />
-                </div>
-
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{
-                    display: "block",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    color: "#374151",
-                    marginBottom: "8px",
-                  }}>
-                    Country/Region
-                  </label>
-                  <select
-                    value={addressFormData.country}
-                    onChange={(e) => setAddressFormData({ ...addressFormData, country: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "8px 12px",
-                      border: "1px solid #d1d5db",
-                      borderRadius: "6px",
-                      fontSize: "14px",
-                      backgroundColor: "#ffffff",
-                    }}
-                  >
-                    <option value="">Select or type to add</option>
-                    <option value="US">United States</option>
-                    <option value="GB">United Kingdom</option>
-                    <option value="CA">Canada</option>
-                    <option value="AU">Australia</option>
-                    <option value="KE">Kenya</option>
-                    <option value="SO">Somalia</option>
-                  </select>
-                </div>
-
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{
-                    display: "block",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    color: "#374151",
-                    marginBottom: "8px",
-                  }}>
-                    Address
-                  </label>
-                  <div style={{ marginBottom: "8px" }}>
-                    <input
-                      type="text"
-                      value={addressFormData.addressLine1}
-                      onChange={(e) => setAddressFormData({ ...addressFormData, addressLine1: e.target.value })}
-                      style={{
-                        width: "100%",
-                        padding: "8px 12px",
-                        border: "1px solid #d1d5db",
-                        borderRadius: "6px",
-                        fontSize: "14px",
-                      }}
-                      placeholder="Address Line 1"
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="text"
-                      value={addressFormData.addressLine2}
-                      onChange={(e) => setAddressFormData({ ...addressFormData, addressLine2: e.target.value })}
-                      style={{
-                        width: "100%",
-                        padding: "8px 12px",
-                        border: "1px solid #d1d5db",
-                        borderRadius: "6px",
-                        fontSize: "14px",
-                      }}
-                      placeholder="Address Line 2"
-                    />
-                  </div>
-                </div>
-
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{
-                    display: "block",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    color: "#374151",
-                    marginBottom: "8px",
-                  }}>
-                    City
-                  </label>
-                  <input
-                    type="text"
-                    value={addressFormData.city}
-                    onChange={(e) => setAddressFormData({ ...addressFormData, city: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "8px 12px",
-                      border: "1px solid #d1d5db",
-                      borderRadius: "6px",
-                      fontSize: "14px",
-                    }}
-                    placeholder=""
-                  />
-                </div>
-
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{
-                    display: "block",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    color: "#374151",
-                    marginBottom: "8px",
-                  }}>
-                    State
-                  </label>
-                  <select
-                    value={addressFormData.state}
-                    onChange={(e) => setAddressFormData({ ...addressFormData, state: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "8px 12px",
-                      border: "1px solid #d1d5db",
-                      borderRadius: "6px",
-                      fontSize: "14px",
-                      backgroundColor: "#ffffff",
-                    }}
-                  >
-                    <option value="">Select or type to add</option>
-                    <option value="CA">California</option>
-                    <option value="NY">New York</option>
-                    <option value="TX">Texas</option>
-                    <option value="FL">Florida</option>
-                  </select>
-                </div>
-
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{
-                    display: "block",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    color: "#374151",
-                    marginBottom: "8px",
-                  }}>
-                    ZIP/Postal Code
-                  </label>
-                  <input
-                    type="text"
-                    value={addressFormData.zipCode}
-                    onChange={(e) => setAddressFormData({ ...addressFormData, zipCode: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "8px 12px",
-                      border: "1px solid #d1d5db",
-                      borderRadius: "6px",
-                      fontSize: "14px",
-                    }}
-                    placeholder=""
-                  />
-                </div>
-
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{
-                    display: "block",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    color: "#374151",
-                    marginBottom: "8px",
-                  }}>
-                    Phone
-                  </label>
-                  <input
-                    type="text"
-                    value={addressFormData.phone}
-                    onChange={(e) => setAddressFormData({ ...addressFormData, phone: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "8px 12px",
-                      border: "1px solid #d1d5db",
-                      borderRadius: "6px",
-                      fontSize: "14px",
-                    }}
-                    placeholder=""
-                  />
-                </div>
-
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{
-                    display: "block",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    color: "#374151",
-                    marginBottom: "8px",
-                  }}>
-                    Fax Number
-                  </label>
-                  <input
-                    type="text"
-                    value={addressFormData.faxNumber}
-                    onChange={(e) => setAddressFormData({ ...addressFormData, faxNumber: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "8px 12px",
-                      border: "1px solid #d1d5db",
-                      borderRadius: "6px",
-                      fontSize: "14px",
-                    }}
-                    placeholder=""
-                  />
-                </div>
-              </div>
-
-              {/* Modal Footer */}
-              <div style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "flex-end",
-                gap: "12px",
-                padding: "20px 24px",
-                borderTop: "1px solid #e5e7eb",
-              }}>
-                <button
-                  onClick={() => setShowAddressModal(false)}
-                  style={{
-                    padding: "8px 16px",
-                    backgroundColor: "#ffffff",
+                    width: "100%",
+                    padding: "8px 12px",
                     border: "1px solid #d1d5db",
                     borderRadius: "6px",
                     fontSize: "14px",
-                    fontWeight: "500",
-                    color: "#374151",
-                    cursor: "pointer",
                   }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddressSave}
+                  placeholder=""
+                />
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{
+                  display: "block",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  color: "#374151",
+                  marginBottom: "8px",
+                }}>
+                  Country/Region
+                </label>
+                <select
+                  value={addressFormData.country}
+                  onChange={(e) => setAddressFormData({ ...addressFormData, country: e.target.value })}
                   style={{
-                    padding: "8px 16px",
-                    background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)",
-                    border: "none",
+                    width: "100%",
+                    padding: "8px 12px",
+                    border: "1px solid #d1d5db",
                     borderRadius: "6px",
                     fontSize: "14px",
-                    fontWeight: "500",
-                    color: "#ffffff",
-                    cursor: "pointer",
+                    backgroundColor: "#ffffff",
                   }}
-                  onMouseEnter={(e) => e.target.style.opacity = "0.9"}
-                  onMouseLeave={(e) => e.target.style.opacity = "1"}
                 >
-                  Save
-                </button>
+                  <option value="">Select or type to add</option>
+                  <option value="US">United States</option>
+                  <option value="GB">United Kingdom</option>
+                  <option value="CA">Canada</option>
+                  <option value="AU">Australia</option>
+                  <option value="KE">Kenya</option>
+                  <option value="SO">Somalia</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{
+                  display: "block",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  color: "#374151",
+                  marginBottom: "8px",
+                }}>
+                  Address
+                </label>
+                <div style={{ marginBottom: "8px" }}>
+                  <input
+                    type="text"
+                    value={addressFormData.addressLine1}
+                    onChange={(e) => setAddressFormData({ ...addressFormData, addressLine1: e.target.value })}
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "6px",
+                      fontSize: "14px",
+                    }}
+                    placeholder="Address Line 1"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    value={addressFormData.addressLine2}
+                    onChange={(e) => setAddressFormData({ ...addressFormData, addressLine2: e.target.value })}
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "6px",
+                      fontSize: "14px",
+                    }}
+                    placeholder="Address Line 2"
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{
+                  display: "block",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  color: "#374151",
+                  marginBottom: "8px",
+                }}>
+                  City
+                </label>
+                <input
+                  type="text"
+                  value={addressFormData.city}
+                  onChange={(e) => setAddressFormData({ ...addressFormData, city: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "6px",
+                    fontSize: "14px",
+                  }}
+                  placeholder=""
+                />
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{
+                  display: "block",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  color: "#374151",
+                  marginBottom: "8px",
+                }}>
+                  State
+                </label>
+                <select
+                  value={addressFormData.state}
+                  onChange={(e) => setAddressFormData({ ...addressFormData, state: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "6px",
+                    fontSize: "14px",
+                    backgroundColor: "#ffffff",
+                  }}
+                >
+                  <option value="">Select or type to add</option>
+                  <option value="CA">California</option>
+                  <option value="NY">New York</option>
+                  <option value="TX">Texas</option>
+                  <option value="FL">Florida</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{
+                  display: "block",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  color: "#374151",
+                  marginBottom: "8px",
+                }}>
+                  ZIP/Postal Code
+                </label>
+                <input
+                  type="text"
+                  value={addressFormData.zipCode}
+                  onChange={(e) => setAddressFormData({ ...addressFormData, zipCode: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "6px",
+                    fontSize: "14px",
+                  }}
+                  placeholder=""
+                />
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{
+                  display: "block",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  color: "#374151",
+                  marginBottom: "8px",
+                }}>
+                  Phone
+                </label>
+                <input
+                  type="text"
+                  value={addressFormData.phone}
+                  onChange={(e) => setAddressFormData({ ...addressFormData, phone: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "6px",
+                    fontSize: "14px",
+                  }}
+                  placeholder=""
+                />
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{
+                  display: "block",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  color: "#374151",
+                  marginBottom: "8px",
+                }}>
+                  Fax Number
+                </label>
+                <input
+                  type="text"
+                  value={addressFormData.faxNumber}
+                  onChange={(e) => setAddressFormData({ ...addressFormData, faxNumber: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "6px",
+                    fontSize: "14px",
+                  }}
+                  placeholder=""
+                />
               </div>
             </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              gap: "12px",
+              padding: "20px 24px",
+              borderTop: "1px solid #e5e7eb",
+            }}>
+              <button
+                onClick={() => setShowAddressModal(false)}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#ffffff",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "6px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  color: "#374151",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddressSave}
+                style={{
+                  padding: "8px 16px",
+                  background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)",
+                  border: "none",
+                  borderRadius: "6px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  color: "#ffffff",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.opacity = "0.9"}
+                onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.opacity = "1"}
+              >
+                Save
+              </button>
+            </div>
           </div>
-        )
-      }
+        </div>
+      , document.body) : null}
 
       {/* Add Contact Person Modal */}
       {
@@ -8574,7 +8655,7 @@ export default function VendorDetail() {
                       </label>
                       <p className="text-sm text-gray-600 leading-relaxed">
                         This vendor will be able to see all their transactions with your organization by logging in to the portal using their email address.{" "}
-                        <a href="#" className="hover:underline font-medium transition-colors" style={{ color: "#156372" }} onMouseEnter={(e) => e.target.style.color = "#0D4A52"} onMouseLeave={(e) => e.target.style.color = "#156372"}>Learn More</a>
+                        <a href="#" className="hover:underline font-medium transition-colors" style={{ color: "#156372" }} onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.color = "#0D4A52"} onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.color = "#156372"}>Learn More</a>
                       </p>
                     </div>
                   </div>
@@ -8586,8 +8667,8 @@ export default function VendorDetail() {
                 <button
                   className="px-6 py-2 text-white rounded-md text-sm font-medium cursor-pointer transition-all"
                   style={{ background: "linear-gradient(90deg, #156372 0%, #0D4A52 100%)" }}
-                  onMouseEnter={(e) => e.target.style.opacity = "0.9"}
-                  onMouseLeave={(e) => e.target.style.opacity = "1"}
+                  onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.opacity = "0.9"}
+                  onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.opacity = "1"}
                   onClick={handleContactPersonSave}
                 >
                   Save
@@ -8597,6 +8678,6 @@ export default function VendorDetail() {
           </div>
         )
       }
-    </div >
+    </div>
   );
 }

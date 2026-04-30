@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { expensesAPI, vendorsAPI, customersAPI, chartOfAccountsAPI, bankAccountsAPI, currenciesAPI } from "../../../services/api";
+import { expensesAPI, vendorsAPI, customersAPI, chartOfAccountsAPI, bankAccountsAPI, currenciesAPI } from "../../../../services/api";
 
 const extractCollection = (response: any): any[] => {
   if (Array.isArray(response)) return response;

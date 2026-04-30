@@ -38,6 +38,7 @@ import { getAccountOptionLabel, getBankAccountsFromResponse, getChartAccountsFro
 import ExportBills from "./ExportBills";
 
 const BILLS_LIST_CACHE_KEY = "bills-list-cache";
+const BILL_PAYMENT_ACCOUNTS_CACHE_KEY = "bill-payment-accounts-cache";
 
 interface BillItem {
   id: string;
@@ -138,6 +139,42 @@ const readCachedBills = () => {
   }
 };
 
+const readCachedPaidThroughAccounts = () => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const rawValue = window.sessionStorage.getItem(BILL_PAYMENT_ACCOUNTS_CACHE_KEY);
+    if (!rawValue) return [];
+    const parsed = JSON.parse(rawValue);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error("Failed to parse cached paid through accounts:", error);
+    return [];
+  }
+};
+
+const getDefaultPaidThroughAccount = (accounts: any[] = [], paymentMode = "Cash") => {
+  if (!Array.isArray(accounts) || accounts.length === 0) return null;
+
+  const normalizedMode = String(paymentMode || "").toLowerCase();
+
+  if (normalizedMode === "cash") {
+    return (
+      accounts.find((acc: any) => String(acc.name || "").toLowerCase() === "petty cash") ||
+      accounts.find((acc: any) => String(acc.accountType || "").toLowerCase() === "cash") ||
+      accounts[0]
+    );
+  }
+
+  return (
+    accounts.find((acc: any) => String(acc.accountType || "").toLowerCase().includes("bank")) ||
+    accounts.find((acc: any) => String(acc.accountType || "").toLowerCase().includes("card")) ||
+    accounts[0]
+  );
+};
+
 export default function BillDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -199,9 +236,11 @@ export default function BillDetail() {
 
   // Payment Recording State
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
-  const [paidThroughAccounts, setPaidThroughAccounts] = useState<any[]>([]);
+  const [paidThroughAccounts, setPaidThroughAccounts] = useState<any[]>(() => readCachedPaidThroughAccounts());
   const [activePaymentField, setActivePaymentField] = useState<string>("");
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const [dismissedPaymentAmountWarning, setDismissedPaymentAmountWarning] = useState(false);
+  const [showPaymentAmountWarning, setShowPaymentAmountWarning] = useState(false);
   const [paymentFormData, setPaymentFormData] = useState({
     location: "Head Office",
     paymentAmount: "",
@@ -468,6 +507,9 @@ export default function BillDetail() {
           name: getAccountOptionLabel(acc)
         }));
         setPaidThroughAccounts(transformed);
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(BILL_PAYMENT_ACCOUNTS_CACHE_KEY, JSON.stringify(transformed));
+        }
       } catch (error) {
         console.error("Error loading accounts:", error);
       }
@@ -479,10 +521,7 @@ export default function BillDetail() {
     if (paidThroughAccounts.length === 0) return;
     setPaymentFormData(prev => {
       if (prev.paidThrough || prev.paidThroughId) return prev;
-      const defaultAccount =
-        paidThroughAccounts.find((acc: any) => String(acc.name || "").toLowerCase() === "petty cash") ||
-        paidThroughAccounts.find((acc: any) => String(acc.accountType || "").toLowerCase() === "cash") ||
-        paidThroughAccounts[0];
+      const defaultAccount = getDefaultPaidThroughAccount(paidThroughAccounts, prev.paymentMode);
       return {
         ...prev,
         paidThrough: defaultAccount?.name || "",
@@ -1290,20 +1329,68 @@ export default function BillDetail() {
   const billBalanceDue = toFiniteNumber(bill.balanceDue ?? bill.total, 0);
   const isBillPaid = billStatusText === "PAID" || billBalanceDue <= 0;
   const isBillUnpaid = !isBillPaid;
+  const enteredPaymentAmount = toFiniteNumber(paymentFormData.paymentAmount, 0);
+  const hasExcessPaymentAmount = enteredPaymentAmount > billBalanceDue && billBalanceDue >= 0;
+
+  const openRecordPaymentForm = () => {
+    if (!bill) return;
+
+    const availableAccounts =
+      paidThroughAccounts.length > 0 ? paidThroughAccounts : readCachedPaidThroughAccounts();
+    const defaultPaymentMode = "Cash";
+    const defaultAccount = getDefaultPaidThroughAccount(availableAccounts, defaultPaymentMode);
+
+    setPaymentFormData(prev => ({
+      ...prev,
+      location: "Head Office",
+      paymentAmount: String(bill.balanceDue || bill.total || ""),
+      paymentDate: todayIsoDate,
+      paymentMadeOn: todayIsoDate,
+      paymentMode: defaultPaymentMode,
+      paidThrough: defaultAccount?.name || prev.paidThrough || "",
+      paidThroughId: defaultAccount?._id || defaultAccount?.id || prev.paidThroughId || "",
+      reference: `Payment for ${bill.billNumber}`,
+    }));
+
+    setDismissedPaymentAmountWarning(false);
+    setShowPaymentAmountWarning(false);
+    setIsRecordingPayment(true);
+  };
+
   const handlePaymentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     // @ts-ignore
     const checked = e.target.checked;
-    setPaymentFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
+    setPaymentFormData(prev => {
+      const nextValue = type === 'checkbox' ? checked : value;
+      const nextState = {
+        ...prev,
+        [name]: nextValue
+      } as typeof prev;
+
+      if (name === "paymentDate" && (!prev.paymentMadeOn || prev.paymentMadeOn === prev.paymentDate)) {
+        nextState.paymentMadeOn = String(value || "");
+      }
+
+      if (name === "paymentAmount") {
+        setDismissedPaymentAmountWarning(false);
+        setShowPaymentAmountWarning(false);
+      }
+
+      return nextState;
+    });
   };
 
   const handlePaymentSubmit = async (status: 'draft' | 'paid') => {
     if (!bill) return;
     if (!paymentFormData.paymentAmount) {
       toast.error("Please enter a payment amount.");
+      return;
+    }
+    if (hasExcessPaymentAmount) {
+      setDismissedPaymentAmountWarning(false);
+      setShowPaymentAmountWarning(true);
+      toast.error("Payment amount cannot exceed the bill balance.");
       return;
     }
     if (!paymentFormData.paymentMadeOn) {
@@ -1439,8 +1526,7 @@ export default function BillDetail() {
     container: {
       display: "flex",
       width: "100%",
-      height: "100vh",
-      overflow: "hidden",
+      minHeight: "100vh",
       backgroundColor: "#ffffff",
       position: "relative",
     },
@@ -1451,12 +1537,15 @@ export default function BillDetail() {
       display: "flex",
       flexDirection: "column",
       transition: "width 0.3s ease",
-      overflow: "hidden",
+      overflow: "visible",
     },
     sidebarHeader: {
       padding: "16px",
       borderBottom: "1px solid #e5e7eb",
-      position: "relative",
+      position: "sticky",
+      top: 0,
+      zIndex: 15,
+      backgroundColor: "#ffffff",
     },
     searchBar: {
       display: "flex",
@@ -1563,7 +1652,7 @@ export default function BillDetail() {
     },
     sidebarList: {
       flex: 1,
-      overflowY: "auto",
+      overflow: "visible",
     },
     sidebarItem: {
       padding: "16px",
@@ -1610,7 +1699,7 @@ export default function BillDetail() {
       flex: 1,
       display: "flex",
       flexDirection: "column",
-      overflow: "hidden",
+      overflow: "visible",
       backgroundColor: "#ffffff",
     },
     header: {
@@ -1620,6 +1709,9 @@ export default function BillDetail() {
       alignItems: "center",
       justifyContent: "space-between",
       backgroundColor: "#ffffff",
+      position: "sticky",
+      top: 0,
+      zIndex: 20,
     },
     headerTitle: {
       fontSize: "18px",
@@ -1729,7 +1821,6 @@ export default function BillDetail() {
     },
     contentArea: {
       flex: 1,
-      overflowY: "auto",
       padding: "32px 24px",
       backgroundColor: "#ffffff",
     },
@@ -1975,8 +2066,13 @@ export default function BillDetail() {
       justifyContent: 'space-between',
       gap: '16px',
       marginBottom: '24px',
+      paddingTop: '12px',
       paddingBottom: '18px',
       borderBottom: '1px solid #e6edf5',
+      position: 'sticky',
+      top: 0,
+      zIndex: 18,
+      backgroundColor: '#ffffff',
     },
     paymentFormTitleWrap: {
       display: 'flex',
@@ -1996,6 +2092,42 @@ export default function BillDetail() {
       color: '#0f172a',
       margin: 0,
       lineHeight: 1.15,
+    },
+    paymentWarningBanner: {
+      marginBottom: '22px',
+      minHeight: '54px',
+      border: '1px solid #b9d7dd',
+      backgroundColor: '#eef7f8',
+      borderRadius: '10px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: '16px',
+      padding: '0 16px',
+    },
+    paymentWarningText: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '10px',
+      color: '#156372',
+      fontSize: '14px',
+      lineHeight: 1.4,
+    },
+    paymentWarningBullet: {
+      fontSize: '18px',
+      lineHeight: 1,
+      color: '#156372',
+      flexShrink: 0,
+    },
+    paymentWarningClose: {
+      border: 'none',
+      backgroundColor: 'transparent',
+      color: '#156372',
+      fontSize: '28px',
+      lineHeight: 1,
+      cursor: 'pointer',
+      padding: 0,
+      flexShrink: 0,
     },
     paymentFormHint: {
       fontSize: '13px',
@@ -2227,14 +2359,14 @@ export default function BillDetail() {
     },
     primaryActionButton: {
       border: 'none',
-      background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+      background: 'linear-gradient(135deg, #156372 0%, #0f4e5a 100%)',
       color: '#ffffff',
       padding: '10px 18px',
       borderRadius: '12px',
       fontSize: '14px',
       fontWeight: 700,
       cursor: 'pointer',
-      boxShadow: '0 12px 24px rgba(21, 128, 61, 0.22)',
+      boxShadow: '0 12px 24px rgba(21, 99, 114, 0.22)',
     },
   };
 
@@ -2448,6 +2580,14 @@ export default function BillDetail() {
                 style={{
                   ...styles.sidebarItem,
                   ...(isSelected ? styles.sidebarItemActive : {}),
+                  ...(isSelected
+                    ? {
+                        position: "sticky" as const,
+                        top: "73px",
+                        zIndex: 14,
+                        backgroundColor: "#f3f8ff",
+                      }
+                    : {}),
                   display: "flex",
                   alignItems: "flex-start",
                   gap: "12px",
@@ -2470,7 +2610,7 @@ export default function BillDetail() {
                     </div>
                   </div>
                   <div style={styles.sidebarItemNumber}>
-                    {b.billNumber} â€¢ {formatDateShort(b.billDate)}
+                    {b.billNumber} • {formatDateShort(b.billDate)}
                   </div>
                   <div
                     className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-block ${status.color}`}
@@ -2593,14 +2733,7 @@ export default function BillDetail() {
             {isBillUnpaid && (
               <button
                 style={{ ...styles.toolbarButton, ...styles.recordPaymentBtn }}
-                onClick={() => {
-                  setPaymentFormData(prev => ({
-                    ...prev,
-                    paymentAmount: String(bill.balanceDue || bill.total || ""),
-                    reference: `Payment for ${bill.billNumber}`
-                  }));
-                  setIsRecordingPayment(true);
-                }}
+                onClick={openRecordPaymentForm}
               >
                 Record Payment
               </button>
@@ -2731,6 +2864,7 @@ export default function BillDetail() {
                         try {
                           await billsAPI.delete(billId);
                           window.dispatchEvent(new Event("billsUpdated"));
+                          window.dispatchEvent(new Event("itemsUpdated"));
                           toast.success("Bill deleted successfully");
                           navigate("/purchases/bills");
                         } catch (error: any) {
@@ -2762,14 +2896,7 @@ export default function BillDetail() {
             </div>
             <button
               style={{ ...styles.toolbarButton, ...styles.bannerRecordPaymentBtn, padding: "4px 12px" }}
-              onClick={() => {
-                setPaymentFormData(prev => ({
-                  ...prev,
-                  paymentAmount: String(bill.balanceDue || bill.total || ""),
-                  reference: `Payment for ${bill.billNumber}`
-                }));
-                setIsRecordingPayment(true);
-              }}
+              onClick={openRecordPaymentForm}
             >
               Record Payment
             </button>
@@ -2804,6 +2931,25 @@ export default function BillDetail() {
                   <h2 style={styles.paymentFormTitle}>Payment for {bill.billNumber}</h2>
                 </div>
               </div>
+
+              {showPaymentAmountWarning && hasExcessPaymentAmount && !dismissedPaymentAmountWarning && (
+                <div style={styles.paymentWarningBanner}>
+                  <div style={styles.paymentWarningText}>
+                    <span style={styles.paymentWarningBullet}>•</span>
+                    <span>It looks like you've entered an excess amount.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDismissedPaymentAmountWarning(true);
+                      setShowPaymentAmountWarning(false);
+                    }}
+                    style={styles.paymentWarningClose}
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0px' }}>
                 <div style={styles.paymentSectionLabel}>Payment Details</div>
@@ -2909,7 +3055,27 @@ export default function BillDetail() {
                           <div style={styles.paymentControlShell}>
                             <PaymentModeDropdown
                               value={paymentFormData.paymentMode}
-                              onChange={(value) => setPaymentFormData(prev => ({ ...prev, paymentMode: value }))}
+                              onChange={(value) =>
+                                setPaymentFormData(prev => {
+                                  const defaultAccount = getDefaultPaidThroughAccount(paidThroughAccounts, value);
+                                  const shouldResetPaidThrough =
+                                    !prev.paidThrough ||
+                                    !prev.paidThroughId ||
+                                    prev.paidThrough === "Petty Cash" ||
+                                    String(prev.paymentMode || "").toLowerCase() !== String(value || "").toLowerCase();
+
+                                  return {
+                                    ...prev,
+                                    paymentMode: value,
+                                    paidThrough: shouldResetPaidThrough
+                                      ? (defaultAccount?.name || prev.paidThrough)
+                                      : prev.paidThrough,
+                                    paidThroughId: shouldResetPaidThrough
+                                      ? (defaultAccount?._id || defaultAccount?.id || prev.paidThroughId)
+                                      : prev.paidThroughId,
+                                  };
+                                })
+                              }
                               onFocus={() => setActivePaymentField("paymentMode")}
                               onBlur={() => setActivePaymentField("")}
                             />
@@ -3232,7 +3398,7 @@ export default function BillDetail() {
                     data={{
                       ...bill,
                       number: bill.billNumber,
-                      date: bill.billDate,
+                      date: formatDateShort(bill.billDate),
                       customerName: bill.vendorName,
                       billingAddress: bill.vendorAddress || `${bill.vendorCity || ""}, ${bill.vendorCountry || ""}`,
                       items: (bill.items || []).map((item: any) => ({
@@ -3296,8 +3462,6 @@ export default function BillDetail() {
                       </tbody>
                     </table>
                   </div>
-                </div>
-              )}
 
               {/* Payments Made Tab Content */}
               {false && activeTab === "Payments Made" && (

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Download, ChevronDown, Lightbulb } from "lucide-react";
+import { ArrowLeft, Download, ChevronDown, Lightbulb } from "lucide-react";
 
 function ImportAppliedCustomerCredits() {
   const navigate = useNavigate();
@@ -108,15 +108,14 @@ function ImportAppliedCustomerCredits() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              gap: "6px",
               borderRadius: "4px",
               fontSize: "14px"
             }}
             onMouseEnter={(e) => e.target.style.backgroundColor = "#f9fafb"}
             onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
           >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M12.5 7.5l-5 5m0-5l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            <ArrowLeft size={16} />
             Back
           </button>
         </div>
@@ -574,8 +573,8 @@ function ImportAppliedCustomerCredits() {
 
           {/* Page Tips */}
           <div style={{
-            backgroundColor: "#fef3c7",
-            border: "1px solid #fde68a",
+            backgroundColor: "rgba(22, 98, 112, 0.1)",
+            border: "1px solid #166270",
             borderRadius: "8px",
             padding: "16px",
             marginTop: "24px"
@@ -589,7 +588,7 @@ function ImportAppliedCustomerCredits() {
             <ul style={{ margin: 0, paddingLeft: "20px", fontSize: "13px", color: "#6b7280", lineHeight: "1.8" }}>
               <li>
                 You can download the{" "}
-                <a href="#" style={{ color: "#156372", textDecoration: "underline" }}>sample xls file</a>
+                <a href="#" style={{ color: "#166270", textDecoration: "underline" }}>sample xls file</a>
                 {" "}to get detailed information about the data fields used while importing.
               </li>
               <li>
@@ -623,7 +622,7 @@ function ImportAppliedCustomerCredits() {
               disabled={!selectedFile}
               style={{
                 padding: "8px 20px",
-                backgroundColor: selectedFile ? "#156372" : "#9ca3af",
+                backgroundColor: selectedFile ? "#166270" : "#9ca3af",
                 border: "none",
                 borderRadius: "6px",
                 fontSize: "13px",
@@ -634,12 +633,12 @@ function ImportAppliedCustomerCredits() {
               }}
               onMouseOver={(e) => {
                 if (selectedFile) {
-                  e.target.style.backgroundColor = "#0D4A52";
+                  e.target.style.backgroundColor = "#114e59";
                 }
               }}
               onMouseOut={(e) => {
                 if (selectedFile) {
-                  e.target.style.backgroundColor = "#156372";
+                  e.target.style.backgroundColor = "#166270";
                 }
               }}
             >
@@ -676,4 +675,3 @@ function ImportAppliedCustomerCredits() {
 }
 
 export default ImportAppliedCustomerCredits;
-

@@ -20,14 +20,15 @@ export default function ExpensesRoutes() {
             <Route path="record" element={<RecordExpense />} />
             <Route path="import" element={<ImportExpenses />} />
             <Route path="custom-view/new" element={<NewExpenseCustomView />} />
-            <Route path=":id" element={<ExpenseDetail />} />
-            <Route path=":id/edit" element={<RecordExpense />} />
 
             <Route path="recurring-expenses" element={<RecurringExpenses />} />
             <Route path="recurring-expenses/new" element={<NewRecurringExpense />} />
             <Route path="recurring-expenses/import" element={<ImportRecurringExpenses />} />
             <Route path="recurring-expenses/:id" element={<RecurringExpenseDetail />} />
             <Route path="recurring-expenses/:id/edit" element={<NewRecurringExpense />} />
+
+            <Route path=":id" element={<ExpenseDetail />} />
+            <Route path=":id/edit" element={<RecordExpense />} />
 
             <Route path="*" element={<Navigate to="/expenses" replace />} />
         </Routes>

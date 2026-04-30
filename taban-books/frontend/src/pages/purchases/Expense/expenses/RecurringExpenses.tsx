@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
 import {
   ChevronDown,
@@ -35,8 +35,8 @@ import DeleteConfirmationModal from "../shared/DeleteConfirmationModal";
 import ExportRecurringExpenses from "./ExportRecurringExpenses";
 import { computeRecurringExpenseDisplayAmount } from "../shared/recurringExpenseModel";
 
-import { recurringExpensesAPI, currenciesAPI, taxesAPI } from "../../../services/api";
-import { useCurrency } from "../../../hooks/useCurrency";
+import { recurringExpensesAPI, currenciesAPI, taxesAPI } from "../../../../services/api";
+import { useCurrency } from "../../../../hooks/useCurrency";
 
 const resolveRecurringExpenseRows = (payload: unknown): any[] => {
   if (!payload) {
@@ -90,6 +90,7 @@ export default function RecurringExpenses() {
     { key: "wsq", label: "wsq" },
   ];
   const navigate = useNavigate();
+  const location = useLocation();
   const { code: baseCurrencyCode, symbol: baseCurrencySymbol } = useCurrency();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -98,8 +99,8 @@ export default function RecurringExpenses() {
   const [selectedView, setSelectedView] = useState("All");
   const [selectedSort, setSelectedSort] = useState("Created Time");
   const [sortDirection, setSortDirection] = useState("desc"); // "asc" or "desc"
-  const [recurringExpenses, setRecurringExpenses] = useState([]);
-  const [selectedItems, setSelectedItems] = useState([]);
+  const [recurringExpenses, setRecurringExpenses] = useState<any[]>([]);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showCustomViewModal, setShowCustomViewModal] = useState(false);
@@ -126,7 +127,7 @@ export default function RecurringExpenses() {
     customerName: "",
     projectName: "",
   });
-  const [notification, setNotification] = useState(null);
+  const [notification, setNotification] = useState<string | null>(null);
   const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() => {
     const validKeys = new Set(allTableColumns.map((col) => col.key));
     if (typeof window === "undefined") return [...defaultVisibleColumnKeys];
@@ -142,12 +143,12 @@ export default function RecurringExpenses() {
       return [...defaultVisibleColumnKeys];
     }
   });
-  const dropdownRef = useRef(null);
-  const moreMenuRef = useRef(null);
-  const sortSubmenuRef = useRef(null);
-  const exportSubmenuRef = useRef(null);
-  const exportSubmenuTimeoutRef = useRef(null);
-  const [hoveredMenuItem, setHoveredMenuItem] = useState(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const sortSubmenuRef = useRef<HTMLDivElement | null>(null);
+  const exportSubmenuRef = useRef<HTMLDivElement | null>(null);
+  const exportSubmenuTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [hoveredMenuItem, setHoveredMenuItem] = useState<string | null>(null);
   const filteredCustomizeColumns = allTableColumns.filter((col) =>
     col.label.toLowerCase().includes(customizeColumnsSearch.trim().toLowerCase())
   );
@@ -171,12 +172,23 @@ export default function RecurringExpenses() {
   const loadExpenses = async () => {
     try {
       setIsRefreshing(true);
-      const response = await recurringExpensesAPI.getAll({ limit: 1000 });
-      const rowsFromResponse = resolveRecurringExpenseRows(response);
-      const expenseRows =
-        rowsFromResponse.length > 0 ? rowsFromResponse : resolveRecurringExpenseRows(response?.data);
+      
+      // Fetch static data only if not already loaded to speed up subsequent refreshes
+      const shouldFetchStatic = currencies.length === 0 || Object.keys(taxRatesById).length === 0;
 
-      // Map API response to match component state structure
+      const [response, cursResp, taxResults] = await Promise.all([
+        recurringExpensesAPI.getAll({ limit: 1000 }),
+        shouldFetchStatic ? currenciesAPI.getAll() : Promise.resolve(null),
+        shouldFetchStatic ? Promise.allSettled([
+          taxesAPI.getForTransactions(),
+          taxesAPI.getAll({ status: "active" })
+        ]) : Promise.resolve(null)
+      ]);
+
+      // Handle Expenses
+      const rowsFromResponse = resolveRecurringExpenseRows(response);
+      const expenseRows = rowsFromResponse.length > 0 ? rowsFromResponse : resolveRecurringExpenseRows(response?.data);
+
       const mappedExpenses = expenseRows.map((expense: any) => ({
         id: expense._id || expense.recurring_expense_id,
         recurringExpenseId: expense.recurring_expense_id || expense._id,
@@ -213,31 +225,36 @@ export default function RecurringExpenses() {
       }));
       setRecurringExpenses(mappedExpenses);
 
-      // Fetch currencies
-      const cursResp = await currenciesAPI.getAll();
-      const cursList = Array.isArray(cursResp) ? cursResp : (cursResp?.data || []);
-      setCurrencies(cursList);
+      // Handle Currencies (cached)
+      if (cursResp) {
+        const cursList = Array.isArray(cursResp) ? cursResp : (cursResp?.data || []);
+        setCurrencies(cursList);
+      }
 
-      try {
-        const primary = await taxesAPI.getForTransactions().catch(() => null);
-        const fallback = await taxesAPI.getAll({ status: "active" }).catch(() => null);
-        const rows = [
-          ...(Array.isArray(primary?.data) ? primary.data : []),
-          ...(Array.isArray(primary?.taxes) ? primary.taxes : []),
-          ...(Array.isArray(fallback?.data) ? fallback.data : []),
-        ];
-        const next: Record<string, number> = {};
-        rows.forEach((tax: any) => {
-          const id = String(tax?._id || tax?.id || tax?.tax_id || tax?.taxId || "").trim();
-          const direct = Number(tax?.taxPercentage ?? tax?.rate ?? tax?.percentage ?? 0);
-          if (id && Number.isFinite(direct) && direct > 0) {
-            next[id] = direct;
-          }
-        });
-        setTaxRatesById(next);
-      } catch (error) {
-        console.error("Error loading tax rates:", error);
-        setTaxRatesById({});
+      // Handle Taxes (cached)
+      if (taxResults && Array.isArray(taxResults)) {
+        try {
+          const primary = taxResults[0].status === 'fulfilled' ? taxResults[0].value : null;
+          const fallback = taxResults[1].status === 'fulfilled' ? taxResults[1].value : null;
+          
+          const rows = [
+            ...(Array.isArray(primary?.data) ? primary.data : []),
+            ...(Array.isArray(primary?.taxes) ? primary.taxes : []),
+            ...(Array.isArray(fallback?.data) ? fallback.data : []),
+          ];
+          const next: Record<string, number> = {};
+          rows.forEach((tax: any) => {
+            const id = String(tax?._id || tax?.id || tax?.tax_id || tax?.taxId || "").trim();
+            const direct = Number(tax?.taxPercentage ?? tax?.rate ?? tax?.percentage ?? 0);
+            if (id && Number.isFinite(direct) && direct > 0) {
+              next[id] = direct;
+            }
+          });
+          setTaxRatesById(next);
+        } catch (error) {
+          console.error("Error loading tax rates:", error);
+          setTaxRatesById({});
+        }
       }
     } catch (error) {
       console.error("Error loading recurring expenses:", error);
@@ -256,12 +273,31 @@ export default function RecurringExpenses() {
     };
 
     window.addEventListener("recurringExpensesUpdated", handleRecurringExpensesUpdated);
-    window.addEventListener("focus", handleRecurringExpensesUpdated);
     return () => {
       window.removeEventListener("recurringExpensesUpdated", handleRecurringExpensesUpdated);
-      window.removeEventListener("focus", handleRecurringExpensesUpdated);
     };
   }, [baseCurrencyCode]);
+
+  useEffect(() => {
+    const createdRecurringExpense = (location.state as any)?.createdRecurringExpense;
+    if (!createdRecurringExpense) return;
+
+    const optimisticRow = normalizeRecurringExpense(createdRecurringExpense, {
+      baseCurrencyCode,
+      currencies,
+    });
+
+    setRecurringExpenses((prev) => {
+      const nextId = optimisticRow.id || optimisticRow.recurringExpenseId;
+      if (!nextId) return prev;
+      if (prev.some((item: any) => String(item.id || item.recurringExpenseId) === String(nextId))) {
+        return prev;
+      }
+      return [optimisticRow, ...prev];
+    });
+
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, navigate, baseCurrencyCode, currencies]);
 
   // Automation Engine - Check for due recurring expenses on load
   useEffect(() => {
@@ -270,7 +306,7 @@ export default function RecurringExpenses() {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        const dueExpenses = recurringExpenses.filter(expense => {
+        const dueExpenses = recurringExpenses.filter((expense: any) => {
           if (!expense.active || !expense.nextExpenseDate) return false;
           const nextDate = new Date(expense.nextExpenseDate);
           nextDate.setHours(0, 0, 0, 0);
@@ -281,16 +317,20 @@ export default function RecurringExpenses() {
           console.log(`[Automation] Found ${dueExpenses.length} due recurring expenses. Generating...`);
           let successCount = 0;
 
-          for (const expense of dueExpenses) {
-            try {
-              const res = await recurringExpensesAPI.generateExpense(expense.id);
+          const results = await Promise.allSettled(
+            dueExpenses.map(expense => recurringExpensesAPI.generateExpense(expense.id))
+          );
+
+          results.forEach((result, index) => {
+            if (result.status === 'fulfilled') {
+              const res = result.value;
               if (res && (res.code === 0 || res.success)) {
                 successCount++;
               }
-            } catch (err) {
-              console.error(`[Automation] Failed to generate expense for profile ${expense.profileName}:`, err);
+            } else {
+              console.error(`[Automation] Failed to generate expense for profile ${dueExpenses[index].profileName}:`, result.reason);
             }
-          }
+          });
 
           if (successCount > 0) {
             setNotification(`Successfully generated ${successCount} due expense(s) automatically.`);
@@ -302,7 +342,7 @@ export default function RecurringExpenses() {
     };
 
     // Run automation after a short delay to ensure initial load is stable
-    const timer = setTimeout(runAutomation, 2000);
+    const timer = setTimeout(runAutomation, 100);
     return () => clearTimeout(timer);
   }, [recurringExpenses.length]);
 
@@ -313,11 +353,11 @@ export default function RecurringExpenses() {
 
   // Close dropdown when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+    const handleClickOutside = (event: any) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setDropdownOpen(false);
       }
-      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
         setMoreMenuOpen(false);
         setSortSubmenuOpen(false);
         setExportSubmenuOpen(false);
@@ -337,7 +377,7 @@ export default function RecurringExpenses() {
     }
   }, [dropdownOpen, moreMenuOpen, sortSubmenuOpen, exportSubmenuOpen]);
 
-  const handleSelectAll = (e) => {
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
       setSelectedItems(displayExpenses.map((expense) => expense.id));
     } else {
@@ -345,7 +385,7 @@ export default function RecurringExpenses() {
     }
   };
 
-  const handleSelectItem = (id) => {
+  const handleSelectItem = (id: string) => {
     setSelectedItems((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
@@ -414,7 +454,7 @@ export default function RecurringExpenses() {
     return "";
   };
 
-  const handleBulkUpdateSubmit = async (field, value) => {
+  const handleBulkUpdateSubmit = async (field: string, value: any) => {
     try {
       const statusValue = field === "status" ? normalizeStatus(value) : "";
       await Promise.all(
@@ -551,14 +591,14 @@ export default function RecurringExpenses() {
     ];
   }, [recurringExpenses, currencies, baseCurrencyCode]);
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: any) => {
     if (!dateString) return "";
     const date = new Date(dateString);
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     return `${date.getDate().toString().padStart(2, "0")} ${months[date.getMonth()]} ${date.getFullYear()}`;
   };
 
-  const calculateNextDate = (startDate, frequency) => {
+  const calculateNextDate = (startDate: any, frequency: any) => {
     if (!startDate) return "";
     const date = new Date(startDate);
     const frequencyMap = {
@@ -572,7 +612,7 @@ export default function RecurringExpenses() {
       "2 Years": 730,
       "3 Years": 1095,
     };
-    const days = frequencyMap[frequency] || 7;
+    const days = frequencyMap[frequency as keyof typeof frequencyMap] || 7;
     date.setDate(date.getDate() + days);
     return formatDate(date.toISOString().split("T")[0]);
   };
@@ -610,7 +650,7 @@ export default function RecurringExpenses() {
   ];
 
   // Sort expenses based on selected sort option
-  const getSortedExpenses = (expenses) => {
+  const getSortedExpenses = (expenses: any[]) => {
     const sorted = [...expenses];
 
     sorted.sort((a, b) => {
@@ -653,8 +693,8 @@ export default function RecurringExpenses() {
             "2 Years": 730,
             "3 Years": 1095,
           };
-          aNextDate.setDate(aNextDate.getDate() + (frequencyMap[aFreq] || 7));
-          bNextDate.setDate(bNextDate.getDate() + (frequencyMap[bFreq] || 7));
+          aNextDate.setDate(aNextDate.getDate() + (frequencyMap[aFreq as keyof typeof frequencyMap] || 7));
+          bNextDate.setDate(bNextDate.getDate() + (frequencyMap[bFreq as keyof typeof frequencyMap] || 7));
           aValue = aNextDate.getTime();
           bValue = bNextDate.getTime();
           break;
@@ -681,7 +721,7 @@ export default function RecurringExpenses() {
   };
 
   // Handle sort selection
-  const handleSortSelect = (sortOption) => {
+  const handleSortSelect = (sortOption: string) => {
     if (selectedSort === sortOption) {
       // Toggle sort direction if same option is selected
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
@@ -694,7 +734,7 @@ export default function RecurringExpenses() {
   };
 
   // Export function
-  const exportRecurringExpenses = (format, expensesToExport) => {
+  const exportRecurringExpenses = (format: string, expensesToExport: any[]) => {
     const exportData = expensesToExport.slice(0, 25000);
 
     if (format === "csv") {
@@ -782,7 +822,7 @@ export default function RecurringExpenses() {
               "2 Years": 730,
               "3 Years": 1095,
             };
-            const days = frequencyMap[expense.repeatEvery] || 7;
+            const days = frequencyMap[expense.repeatEvery as keyof typeof frequencyMap] || 7;
             nextDate.setDate(nextDate.getDate() + days);
             return nextDate < new Date();
           default:
@@ -838,8 +878,8 @@ export default function RecurringExpenses() {
             "2 Years": 730,
             "3 Years": 1095,
           };
-          aNextDate.setDate(aNextDate.getDate() + (frequencyMap[aFreq] || 7));
-          bNextDate.setDate(bNextDate.getDate() + (frequencyMap[bFreq] || 7));
+          aNextDate.setDate(aNextDate.getDate() + (frequencyMap[aFreq as keyof typeof frequencyMap] || 7));
+          bNextDate.setDate(bNextDate.getDate() + (frequencyMap[bFreq as keyof typeof frequencyMap] || 7));
           aValue = aNextDate.getTime();
           bValue = bNextDate.getTime();
           break;
@@ -1055,7 +1095,7 @@ export default function RecurringExpenses() {
       backgroundColor: "#ffffff",
     },
     tableHeader: {
-      backgroundColor: "#f6f7fb",
+      backgroundColor: "#ffffff",
       borderBottom: "1px solid #e6e9f2",
       position: "sticky",
       top: 0,
@@ -1352,7 +1392,7 @@ export default function RecurringExpenses() {
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                 >
                   All Profiles
-                  {dropdownOpen ? <ChevronUp size={16} style={{ color: "#156372" }} /> : <ChevronDown size={16} style={{ color: "#156372" }} />}
+                  {dropdownOpen ? <ChevronUp size={14} style={{ color: "#1b5e6a" }} /> : <ChevronDown size={14} style={{ color: "#1b5e6a" }} />}
                 </button>
                 {dropdownOpen && (
                   <div style={styles.dropdown}>
@@ -1426,7 +1466,7 @@ export default function RecurringExpenses() {
             <div style={styles.headerRight}>
               <button
                 style={styles.newButton}
-                onClick={() => navigate("/expenses/recurring-expenses/new")}
+                onClick={() => navigate("/purchases/recurring-expenses/new")}
               onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#0D4A52")}
               onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#22c55e")}
             >
@@ -1541,7 +1581,7 @@ export default function RecurringExpenses() {
                       }}
                       onClick={() => {
                         setMoreMenuOpen(false);
-                        navigate("/expenses/recurring-expenses/import");
+                        navigate("/purchases/recurring-expenses/import");
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.backgroundColor = "#f9fafb";
@@ -1742,8 +1782,8 @@ export default function RecurringExpenses() {
               </tr>
             </thead>
             <tbody style={styles.tableBody}>
-              {isRefreshing ? (
-                // Skeleton loading rows
+              {isRefreshing && recurringExpenses.length === 0 ? (
+                // Skeleton loading rows - only show during initial load
                 Array.from({ length: 5 }).map((_, index) => (
                   <tr key={`skeleton-${index}`} style={styles.tableRow}>
                     <td style={styles.tableCell}>
@@ -1801,7 +1841,7 @@ export default function RecurringExpenses() {
                       ) {
                         return;
                       }
-                      navigate(`/expenses/recurring-expenses/${expense.id}`);
+                      navigate(`/purchases/expenses/recurring-expenses/${expense.id}`);
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f9fafb")}
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
@@ -1904,7 +1944,7 @@ export default function RecurringExpenses() {
               gap: "16px"
             }}>
               <button
-                onClick={() => navigate("/expenses/recurring-expenses/new")}
+                onClick={() => navigate("/purchases/recurring-expenses/new")}
                 style={{
                   padding: "12px 24px",
                   fontSize: "16px",
@@ -1928,233 +1968,8 @@ export default function RecurringExpenses() {
                 <Plus size={20} />
                 NEW RECURRING EXPENSE
               </button>
-              <button
-                onClick={() => navigate("/expenses/recurring-expenses/import")}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#156372",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  cursor: "pointer",
-                  textDecoration: "underline",
-                  padding: "8px"
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = "#0D4A52";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = "#156372";
-                }}
-              >
-                Import Recurring Expenses
-              </button>
+
             </div>
-          </div>
-
-          {/* Life cycle of a Recurring Expense Diagram */}
-          <div style={{
-            marginBottom: "60px",
-            width: "100%",
-            maxWidth: "800px"
-          }}>
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "24px",
-              flexWrap: "wrap"
-            }}>
-              {/* CREATE RECURRING EXPENSE */}
-              <div style={{
-                padding: "20px 24px",
-                backgroundColor: "#ffffff",
-                border: "2px solid #e5e7eb",
-                borderRadius: "8px",
-                textAlign: "center",
-                minWidth: "200px"
-              }}>
-                <div style={{
-                  fontSize: "14px",
-                  fontWeight: "600",
-                  color: "#111827",
-                  marginBottom: "8px"
-                }}>
-                  CREATE RECURRING EXPENSE
-                </div>
-                <FileText size={24} style={{ color: "#6b7280" }} />
-              </div>
-
-              {/* Arrow */}
-              <ChevronRight size={24} style={{ color: "#9ca3af" }} />
-
-              {/* BILLABLE / NON-BILLABLE Split */}
-              <div style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "16px"
-              }}>
-                {/* BILLABLE Path */}
-                <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "16px"
-                }}>
-                  <div style={{
-                    padding: "16px 20px",
-                    backgroundColor: "#ffffff",
-                    border: "2px solid #10b981",
-                    borderRadius: "8px",
-                    textAlign: "center",
-                    minWidth: "150px"
-                  }}>
-                    <div style={{
-                      fontSize: "12px",
-                      fontWeight: "600",
-                      color: "#10b981",
-                      marginBottom: "8px"
-                    }}>
-                      BILLABLE
-                    </div>
-                    <FileText size={20} style={{ color: "#10b981" }} />
-                  </div>
-                  <ChevronRight size={20} style={{ color: "#9ca3af" }} />
-                  <div style={{
-                    padding: "16px 20px",
-                    backgroundColor: "#ffffff",
-                    border: "2px solid #156372",
-                    borderRadius: "8px",
-                    textAlign: "center",
-                    minWidth: "180px"
-                  }}>
-                    <div style={{
-                      fontSize: "12px",
-                      fontWeight: "600",
-                      color: "#156372",
-                      marginBottom: "8px"
-                    }}>
-                      CONVERT TO INVOICE
-                    </div>
-                    <FileText size={20} style={{ color: "#156372" }} />
-                  </div>
-                  <ChevronRight size={20} style={{ color: "#9ca3af" }} />
-                  <div style={{
-                    padding: "16px 20px",
-                    backgroundColor: "#ffffff",
-                    border: "2px solid #10b981",
-                    borderRadius: "8px",
-                    textAlign: "center",
-                    minWidth: "150px"
-                  }}>
-                    <div style={{
-                      fontSize: "12px",
-                      fontWeight: "600",
-                      color: "#10b981",
-                      marginBottom: "8px"
-                    }}>
-                      GET REIMBURSED
-                    </div>
-                    <div style={{
-                      fontSize: "20px",
-                      color: "#10b981"
-                    }}>$</div>
-                  </div>
-                </div>
-
-                {/* NON-BILLABLE Path */}
-                <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "16px"
-                }}>
-                  <div style={{
-                    padding: "16px 20px",
-                    backgroundColor: "#ffffff",
-                    border: "2px solid #156372",
-                    borderRadius: "8px",
-                    textAlign: "center",
-                    minWidth: "150px"
-                  }}>
-                    <div style={{
-                      fontSize: "12px",
-                      fontWeight: "600",
-                      color: "#156372",
-                      marginBottom: "8px"
-                    }}>
-                      NON-BILLABLE
-                    </div>
-                    <FileText size={20} style={{ color: "#156372" }} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* In the Recurring Expenses module, you can: Section */}
-          <div style={{
-            width: "100%",
-            maxWidth: "800px",
-            textAlign: "left"
-          }}>
-            <h2 style={{
-              fontSize: "20px",
-              fontWeight: "600",
-              color: "#111827",
-              margin: "0 0 24px 0"
-            }}>
-              In the Recurring Expenses module, you can:
-            </h2>
-            <ul style={{
-              listStyle: "none",
-              padding: 0,
-              margin: 0,
-              display: "flex",
-              flexDirection: "column",
-              gap: "16px"
-            }}>
-              <li style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: "12px"
-              }}>
-                <CheckCircle size={20} style={{ color: "#10b981", flexShrink: 0, marginTop: "2px" }} />
-                <span style={{
-                  fontSize: "16px",
-                  color: "#374151",
-                  lineHeight: "1.5"
-                }}>
-                  Create a recurring profile to routinely auto-generate expenses.
-                </span>
-              </li>
-              <li style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: "12px"
-              }}>
-                <CheckCircle size={20} style={{ color: "#10b981", flexShrink: 0, marginTop: "2px" }} />
-                <span style={{
-                  fontSize: "16px",
-                  color: "#374151",
-                  lineHeight: "1.5"
-                }}>
-                  View when each expense was auto-generated.
-                </span>
-              </li>
-              <li style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: "12px"
-              }}>
-                <CheckCircle size={20} style={{ color: "#10b981", flexShrink: 0, marginTop: "2px" }} />
-                <span style={{
-                  fontSize: "16px",
-                  color: "#374151",
-                  lineHeight: "1.5"
-                }}>
-                  Create individual expenses within the recurring profile.
-                </span>
-              </li>
-            </ul>
           </div>
         </div>
       )
@@ -2840,17 +2655,17 @@ function UserRoleSelector() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [isInputFocused, setIsInputFocused] = useState(false);
-  const [selectedItems, setSelectedItems] = useState([]);
-  const inputRef = useRef(null);
+  const [selectedItems, setSelectedItems] = useState<any[]>([]);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const toggleDropdown = () => setIsDropdownOpen(!isDropdownOpen);
-  const selectMode = (mode) => {
+  const selectMode = (mode: string) => {
     setSelectorMode(mode);
     setIsDropdownOpen(false);
     setInputValue("");
   };
 
-  const handleSelect = (item) => {
+  const handleSelect = (item: any) => {
     if (!selectedItems.find(i => i.id === item.id)) {
       setSelectedItems([...selectedItems, { ...item, type: selectorMode }]);
     }
@@ -2858,7 +2673,7 @@ function UserRoleSelector() {
     setIsInputFocused(false);
   };
 
-  const handleRemove = (id) => {
+  const handleRemove = (id: any) => {
     setSelectedItems(selectedItems.filter(i => i.id !== id));
   };
 
@@ -2875,7 +2690,7 @@ function UserRoleSelector() {
       item.name.toLowerCase().includes(inputValue.toLowerCase())
     );
 
-  const highlightBorder = (focused) => focused ? `1px solid ${Z.primaryColor}` : `1px solid ${Z.line}`;
+  const highlightBorder = (focused: boolean) => focused ? `1px solid ${Z.primaryColor}` : `1px solid ${Z.line}`;
 
   return (
     <div style={{
@@ -3019,7 +2834,7 @@ function UserRoleSelector() {
   );
 }
 
-function NewCustomViewModal({ onClose, onSave }) {
+function NewCustomViewModal({ onClose, onSave }: { onClose: () => void, onSave: (data: any) => void }) {
   const [formData, setFormData] = useState({
     name: "",
     markAsFavorite: false,
@@ -3044,7 +2859,7 @@ function NewCustomViewModal({ onClose, onSave }) {
   });
   const [searchQuery, setSearchQuery] = useState("");
 
-  const handleChange = (e) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
     setFormData((prev) => ({
       ...prev,
@@ -3052,7 +2867,7 @@ function NewCustomViewModal({ onClose, onSave }) {
     }));
   };
 
-  const handleCriterionChange = (id, field, value) => {
+  const handleCriterionChange = (id: number, field: string, value: string) => {
     setFormData((prev) => ({
       ...prev,
       criteria: prev.criteria.map((c) =>
@@ -3076,14 +2891,14 @@ function NewCustomViewModal({ onClose, onSave }) {
     }));
   };
 
-  const removeCriterion = (id) => {
+  const removeCriterion = (id: number) => {
     setFormData((prev) => ({
       ...prev,
       criteria: prev.criteria.filter((c) => c.id !== id),
     }));
   };
 
-  const moveColumnToSelected = (column) => {
+  const moveColumnToSelected = (column: string) => {
     setFormData((prev) => ({
       ...prev,
       availableColumns: prev.availableColumns.filter((c) => c !== column),
@@ -3091,7 +2906,7 @@ function NewCustomViewModal({ onClose, onSave }) {
     }));
   };
 
-  const moveColumnToAvailable = (column) => {
+  const moveColumnToAvailable = (column: string) => {
     // Don't allow removing required columns
     const requiredColumns = ["Profile Name", "Expense Account", "Frequency", "Next Expense Date", "Status", "Amount"];
     if (requiredColumns.includes(column)) {
@@ -3104,7 +2919,7 @@ function NewCustomViewModal({ onClose, onSave }) {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave(formData);
   };

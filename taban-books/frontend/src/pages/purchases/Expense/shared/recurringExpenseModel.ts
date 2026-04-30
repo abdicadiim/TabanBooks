@@ -45,6 +45,19 @@ export const buildRecurringExpensePayload = ({
   reportingTagDefinitions: any[];
   reportingTagValues: Record<string, string>;
 }) => {
+  const isProbablyObjectId = (value: string) => /^[a-fA-F0-9]{24}$/.test(value);
+
+  const optionalId = (value: any) => {
+    const normalized = String(value || "").trim();
+    return normalized || undefined;
+  };
+
+  const optionalObjectId = (value: any) => {
+    const normalized = optionalId(value);
+    if (!normalized) return undefined;
+    return isProbablyObjectId(normalized) ? normalized : undefined;
+  };
+
   const resolvedProfileName =
     String(formData.profileName || "").trim() ||
     `${formData.expenseAccount || "Recurring Expense"} - ${formData.startDate}`;
@@ -59,24 +72,26 @@ export const buildRecurringExpensePayload = ({
     repeat_every: repeatEveryValue,
     start_date: formData.startDate,
     end_date: formData.neverExpires ? null : formData.endsOn,
-    account_id: formData.expenseAccountId || null,
+    account_id: optionalObjectId(formData.expenseAccountId) || null,
     account_name: formData.expenseAccount,
     amount: parseFloat(formData.amount),
     currency_code: formData.currency,
-    currency_id: formData.currencyId,
-    vendor_id: formData.vendor_id || undefined,
+    currency_id: optionalObjectId(formData.currencyId),
+    paid_through_account_id: optionalObjectId(formData.paidThroughId),
+    paid_through_account_name: formData.paidThrough || undefined,
+    vendor_id: optionalObjectId(formData.vendor_id),
     vendor_name: formData.vendor || undefined,
     description: formData.description || undefined,
-    customer_id: formData.customer_id || undefined,
+    customer_id: optionalObjectId(formData.customer_id),
     customer_name: formData.customerName || undefined,
     is_billable: Boolean(formData.isBillable && formData.customer_id),
-    project_id: formData.project_id || undefined,
+    project_id: optionalObjectId(formData.project_id),
     project_name: formData.projectName || undefined,
     status: "active",
     never_expire: formData.neverExpires,
-    tax_id: formData.tax || formData.taxId || undefined,
+    tax_id: optionalObjectId(formData.tax || formData.taxId),
     location: formData.location,
-    location_id: formData.locationId,
+    location_id: optionalObjectId(formData.locationId),
     reporting_tags: reportingTagDefinitions
       .slice(0, 2)
       .map((tag: any) => ({

@@ -1,222 +1,688 @@
-import React from "react";
-import { Loader2, Pencil, Plus, Trash2, X, Paperclip, MoreHorizontal, ChevronRight } from "lucide-react";
-import type { ChartOfAccountsAccount } from "../chartOfAccountsTypes";
+import React, { useMemo } from "react";
+import {
+  X,
+  FileText,
+  Clock,
+  Printer,
+  ChevronRight,
+  TrendingUp,
+  AlertCircle,
+  Plus,
+} from "lucide-react";
+import { format } from "date-fns";
 
-const DEBIT_BALANCE_TYPES = [
-  "Asset", "Other Asset", "Other Current Asset", "Cash", "Bank", "Fixed Asset",
-  "Accounts Receivable", "Stock", "Payment Clearing Account", "Input Tax",
-  "Intangible Asset", "Non Current Asset", "Deferred Tax Asset", "Expense",
-  "Cost Of Goods Sold", "Other Expense",
-];
-
-interface ChartOfAccountsDetailViewProps {
-  accountTransactions: any[];
-  accounts: ChartOfAccountsAccount[];
-  baseCurrency: any;
-  isTransactionsLoading: boolean;
-  onClose: () => void;
-  onDelete: (account: ChartOfAccountsAccount) => void;
-  onEdit: (account: ChartOfAccountsAccount) => void;
-  onNewAccount: () => void;
-  onOpenTransactionReport?: () => void;
-  onSelectAccount: (account: ChartOfAccountsAccount) => void;
-  selectedAccount: ChartOfAccountsAccount;
-  transactionTotals: { credit: number; debit: number };
-}
-
-const formatTransactionSourceType = (value: unknown): string => {
-  const raw = String(value || "").trim().toLowerCase();
-  if (!raw) return "Journal";
-  const map: Record<string, string> = {
-    invoice: "Invoice Payment",
-    bill: "Bill Payment",
-    payment_made: "Payments Made",
-    payment_received: "Payments Received",
-    manual_journal: "Journal",
-    journal: "Journal",
-  };
-  return map[raw] || raw.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+const brand = {
+  primary: "#156372",
+  primaryDark: "#0d4d59",
+  primarySoft: "#e8f3f5",
+  primarySoftAlt: "#f8fcfc",
+  text: "#1e293b",
+  muted: "#64748b",
+  border: "#e2e8f0",
+  white: "#ffffff",
+  shadow: "0 4px 12px rgba(21, 99, 114, 0.08)",
 };
 
-const formatMoney = (value: number) =>
-  value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+interface ChartOfAccountsDetailViewProps {
+  selectedAccount: any;
+  accounts: any[];
+  onSelectAccount: (account: any) => void;
+  onNewAccount: () => void;
+  onClose: () => void;
+  onOpenTransactionReport: () => void;
+}
 
 export function ChartOfAccountsDetailView({
-  accountTransactions,
-  accounts = [],
-  baseCurrency,
-  isTransactionsLoading,
-  onClose,
-  onDelete,
-  onEdit,
-  onNewAccount,
-  onOpenTransactionReport,
-  onSelectAccount,
   selectedAccount,
-  transactionTotals,
+  accounts,
+  onSelectAccount,
+  onNewAccount,
+  onClose,
+  onOpenTransactionReport,
 }: ChartOfAccountsDetailViewProps) {
-  const currencyLabel = baseCurrency?.code || "KES";
-  const isDebitType = DEBIT_BALANCE_TYPES.includes(selectedAccount.type || "");
-  const balance = isDebitType
-    ? transactionTotals.debit - transactionTotals.credit
-    : transactionTotals.credit - transactionTotals.debit;
-  const balanceSuffix = balance >= 0 ? (isDebitType ? "Dr" : "Cr") : (isDebitType ? "Cr" : "Dr");
+  const currencyLabel = "USD";
+
+  const formatMoney = (value: number) => {
+    return new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value || 0);
+  };
+
+  const accountTransactions = useMemo(() => {
+    return selectedAccount?.transactions || [];
+  }, [selectedAccount]);
+
+  const transactionTotals = useMemo(() => {
+    return accountTransactions.reduce(
+      (acc: any, transaction: any) => {
+        const line = transaction.lines?.find(
+          (l: any) =>
+            (l.account?._id || l.account?.id || l.account) ===
+            (selectedAccount?._id || selectedAccount?.id),
+        );
+        if (line) {
+          acc.debit += Number(line.debit || 0);
+          acc.credit += Number(line.credit || 0);
+        }
+        return acc;
+      },
+      { debit: 0, credit: 0 },
+    );
+  }, [accountTransactions, selectedAccount]);
+
+  const formatTransactionSourceType = (type: string) => {
+    if (!type) return "Transaction";
+    return type
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  };
+
+  const getAccountLine = (transaction: any, account: any) => {
+    return transaction.lines?.find(
+      (l: any) =>
+        (l.account?._id || l.account?.id || l.account) ===
+        (account?._id || account?.id),
+    );
+  };
+
+  if (!selectedAccount) {
+    return (
+      <div
+        style={{
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#f8fafc",
+          color: brand.muted,
+          padding: "40px",
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            backgroundColor: brand.primarySoft,
+            padding: "24px",
+            borderRadius: "50%",
+            marginBottom: "20px",
+          }}
+        >
+          <FileText size={48} color={brand.primary} />
+        </div>
+        <h3
+          style={{
+            fontSize: "20px",
+            fontWeight: 800,
+            color: brand.text,
+            marginBottom: "12px",
+          }}
+        >
+          Select an Account
+        </h3>
+        <p style={{ maxWidth: "320px", lineHeight: "1.6" }}>
+          Select an account from the list to view its transaction history and
+          detailed balance information.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex w-full h-full bg-white overflow-hidden font-sans">
-      {/* Left Sidebar List */}
-      <aside className="w-[280px] flex-shrink-0 border-r border-gray-100 flex flex-col bg-white h-full relative z-10">
-        <div className="p-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0 bg-white">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">All Accounts</span>
-            <ChevronRight size={12} className="text-slate-400 rotate-90" />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button 
-              onClick={onNewAccount} 
-              className="p-1.5 bg-[#156372] text-white rounded-[10px] hover:bg-[#0d4d59] transition-all shadow-sm active:scale-95 flex items-center justify-center"
-            >
-              <Plus size={14} strokeWidth={3} />
-            </button>
-            <button className="p-1.5 border border-gray-200 rounded text-slate-400 hover:text-slate-600 transition-colors bg-white">
-              <MoreHorizontal size={12} />
-            </button>
-          </div>
+    <div
+      style={{
+        display: "flex",
+        height: "100%",
+        backgroundColor: "#f8fafc",
+        fontFamily: "'Inter', system-ui, sans-serif",
+      }}
+    >
+      {/* Sidebar with Account List */}
+      <aside
+        style={{
+          width: "320px",
+          borderRight: `1px solid ${brand.border}`,
+          backgroundColor: brand.white,
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: "4px 0 10px rgba(0,0,0,0.02)",
+          zIndex: 10,
+        }}
+      >
+        <div
+          style={{
+            padding: "24px 20px",
+            borderBottom: `1px solid ${brand.border}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <h2
+            style={{ fontSize: "16px", fontWeight: 800, color: brand.text }}
+          >
+            Accounts
+          </h2>
+          <button
+            onClick={onNewAccount}
+            style={{
+              width: "32px",
+              height: "32px",
+              borderRadius: "8px",
+              backgroundColor: brand.primary,
+              color: brand.white,
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              transition: "all 0.2s",
+            }}
+            title="New Account"
+          >
+            <Plus size={18} />
+          </button>
         </div>
-        
-        <div className="flex-1 overflow-y-auto custom-scrollbar-thin bg-white">
-          {accounts.map((acc) => {
-            const isSelected = (acc.id || acc._id) === (selectedAccount.id || selectedAccount._id);
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "10px" }}>
+          {accounts.map((account) => {
+            const isActive =
+              (account._id || account.id) ===
+              (selectedAccount._id || selectedAccount.id);
             return (
-              <button
-                key={acc.id || acc._id}
-                onClick={() => onSelectAccount(acc)}
-                className={`w-full px-3 py-3 text-left border-b border-gray-50 transition-all relative flex items-start gap-2.5 group ${isSelected ? 'bg-slate-50 border-l-[3px] border-l-[#156372]' : 'hover:bg-slate-50 border-l-[3px] border-l-transparent'}`}
+              <div
+                key={account._id || account.id}
+                onClick={() => onSelectAccount(account)}
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: "12px",
+                  cursor: "pointer",
+                  marginBottom: "6px",
+                  backgroundColor: isActive ? brand.primarySoft : "transparent",
+                  border: isActive
+                    ? `1px solid ${brand.primarySoft}`
+                    : "1px solid transparent",
+                  transition: "all 0.2s",
+                }}
               >
-                <div className={`mt-0.5 w-4 h-4 border rounded-[4px] transition-all flex-shrink-0 flex items-center justify-center ${isSelected ? 'border-[#156372] bg-[#156372]' : 'border-gray-300 bg-white'}`}>
-                  {isSelected && <div className="w-1.5 h-1.5 bg-white rounded-full shadow-sm" />}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    marginBottom: "4px",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: isActive ? 800 : 600,
+                      color: isActive ? brand.primary : brand.text,
+                    }}
+                  >
+                    {account.name}
+                  </span>
+                  <ChevronRight
+                    size={14}
+                    color={isActive ? brand.primary : brand.muted}
+                  />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-1">
-                    <span className={`text-[12px] font-semibold leading-tight truncate ${isSelected ? 'text-[#156372]' : 'text-slate-700'}`}>{acc.name}</span>
-                    {!acc.isActive && (
-                      <span className="text-[7px] font-bold text-slate-400 uppercase tracking-tighter flex-shrink-0">INACTIVE</span>
-                    )}
-                  </div>
-                  <div className="text-[9px] font-medium text-slate-400 uppercase tracking-widest mt-0.5 truncate">{acc.type}</div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <span style={{ fontSize: "12px", color: brand.muted }}>
+                    {account.code}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      color: brand.text,
+                    }}
+                  >
+                    {currencyLabel} {formatMoney(account.balance)}
+                  </span>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
       </aside>
 
-      {/* Right Detail Pane */}
-      <main className="flex-1 flex flex-col overflow-hidden h-full bg-white">
-        {/* Header */}
-        <header className="px-5 py-3 border-b border-gray-100 flex items-center justify-between bg-white flex-shrink-0 z-10">
-          <div>
-            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">{selectedAccount.type}</div>
-            <h1 className="text-[18px] font-bold text-slate-900 tracking-tight leading-tight">{selectedAccount.name}</h1>
+      {/* Main Content Area */}
+      <main
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* Header Toolbar */}
+        <header
+          style={{
+            padding: "16px 32px",
+            backgroundColor: brand.white,
+            borderBottom: `1px solid ${brand.border}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            position: "sticky",
+            top: 0,
+            zIndex: 10,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div
+              style={{
+                backgroundColor: brand.primarySoft,
+                padding: "8px",
+                borderRadius: "10px",
+              }}
+            >
+              <FileText size={20} color={brand.primary} />
+            </div>
+            <div>
+              <h1
+                style={{
+                  fontSize: "18px",
+                  fontWeight: 800,
+                  color: brand.text,
+                  margin: 0,
+                }}
+              >
+                {selectedAccount.name}
+              </h1>
+              <span style={{ fontSize: "13px", color: brand.muted }}>
+                Account Details & Transactions
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-             <button className="p-1.5 border border-gray-200 rounded text-slate-400 hover:text-slate-600 transition-all shadow-sm bg-slate-50/30"><Paperclip size={16} /></button>
-             <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-all">
-               <X size={20} />
-             </button>
+
+          <div style={{ display: "flex", gap: "10px" }}>
+            <button
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "10px 18px",
+                backgroundColor: brand.white,
+                border: `1px solid ${brand.border}`,
+                borderRadius: "10px",
+                fontSize: "14px",
+                fontWeight: 700,
+                color: brand.text,
+                cursor: "pointer",
+              }}
+            >
+              <Printer size={16} /> Print
+            </button>
+            <button
+              onClick={onClose}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "10px 18px",
+                backgroundColor: brand.white,
+                border: `1px solid ${brand.border}`,
+                borderRadius: "10px",
+                fontSize: "14px",
+                fontWeight: 700,
+                color: "#ef4444",
+                cursor: "pointer",
+              }}
+            >
+              <X size={16} /> Close
+            </button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto py-6 px-6 w-full scroll-smooth bg-white">
-          {/* Actions */}
-          <div className="flex items-center gap-3 mb-6">
-            <button 
-              onClick={() => onEdit(selectedAccount)}
-              className="flex items-center gap-1.5 px-3 py-1 border border-gray-200 rounded bg-white text-[12px] font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm ring-1 ring-black/[0.01]"
+        <div style={{ padding: "32px" }}>
+          {/* Summary Cards */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: "24px",
+              marginBottom: "32px",
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: brand.white,
+                padding: "24px",
+                borderRadius: "20px",
+                boxShadow: brand.shadow,
+                border: "1px solid #f1f5f9",
+              }}
             >
-              <Pencil size={12} className="text-slate-400" />
-              Edit
-            </button>
-          </div>
-
-          {/* Balance Section */}
-          <div className="mb-8">
-             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Closing Balance</div>
-             <div className="flex items-baseline gap-2">
-                <span className="text-[28px] font-bold text-[#4f46e5] tracking-tight">{currencyLabel}{formatMoney(Math.abs(balance))}</span>
-                <span className="text-[16px] font-semibold text-[#4f46e5]/60">({balanceSuffix})</span>
-             </div>
-          </div>
-
-          {/* Description */}
-          {selectedAccount.description && (
-            <div className="mb-8">
-               <p className="text-[13px] text-slate-500 leading-relaxed italic">
-                 Description : {selectedAccount.description}
-               </p>
-            </div>
-          )}
-
-          {/* Divider */}
-          <div className="border-t border-dashed border-gray-200 w-full mb-8" />
-
-          {/* Transactions Table */}
-          <section className="bg-transparent p-0">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-[16px] font-bold text-slate-800 tracking-tight">Recent Transactions</h3>
-              <div className="flex border border-gray-200 rounded bg-white overflow-hidden p-0.5">
-                <button className="px-4 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-700">FCY</button>
-                <button className="px-4 py-1 text-[10px] font-bold bg-[#e0f2fe] text-[#0369a1] rounded-[2px] shadow-sm">BCY</button>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginBottom: "16px",
+                }}
+              >
+                <span style={{ fontSize: "14px", color: brand.muted }}>
+                  Current Balance
+                </span>
+                <TrendingUp size={18} color="#10b981" />
+              </div>
+              <div
+                style={{
+                  fontSize: "24px",
+                  fontWeight: 900,
+                  color: brand.text,
+                }}
+              >
+                {currencyLabel} {formatMoney(selectedAccount.balance)}
               </div>
             </div>
 
-            {isTransactionsLoading ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-3">
-                <Loader2 className="animate-spin text-blue-600" size={32} />
-                <span className="text-[12px] text-slate-400 font-medium">Loading...</span>
+            <div
+              style={{
+                backgroundColor: brand.white,
+                padding: "24px",
+                borderRadius: "20px",
+                boxShadow: brand.shadow,
+                border: "1px solid #f1f5f9",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginBottom: "16px",
+                }}
+              >
+                <span style={{ fontSize: "14px", color: brand.muted }}>
+                  Account Type
+                </span>
+                <Clock size={18} color={brand.primary} />
               </div>
-            ) : accountTransactions.length === 0 ? (
-              <div className="text-center py-16 bg-slate-50/20 rounded-xl border border-dashed border-gray-200">
-                <p className="text-slate-400 text-xs font-medium italic">No recent transactions found.</p>
+              <div
+                style={{
+                  fontSize: "20px",
+                  fontWeight: 800,
+                  color: brand.text,
+                }}
+              >
+                {selectedAccount.type}
+              </div>
+            </div>
+
+            <div
+              style={{
+                backgroundColor: brand.white,
+                padding: "24px",
+                borderRadius: "20px",
+                boxShadow: brand.shadow,
+                border: "1px solid #f1f5f9",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginBottom: "16px",
+                }}
+              >
+                <span style={{ fontSize: "14px", color: brand.muted }}>
+                  Account Code
+                </span>
+                <AlertCircle size={18} color="#f59e0b" />
+              </div>
+              <div
+                style={{
+                  fontSize: "20px",
+                  fontWeight: 800,
+                  color: brand.text,
+                }}
+              >
+                {selectedAccount.code}
+              </div>
+            </div>
+          </div>
+
+          {/* Transactions Table Section */}
+          <section
+            style={{
+              backgroundColor: brand.white,
+              borderRadius: "20px",
+              boxShadow: brand.shadow,
+              border: "1px solid #f1f5f9",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "24px",
+                borderBottom: `1px solid ${brand.border}`,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <h3
+                style={{ fontSize: "16px", fontWeight: 800, color: brand.text }}
+              >
+                Transaction History
+              </h3>
+            </div>
+
+            {accountTransactions.length === 0 ? (
+              <div style={{ padding: "80px 20px", textAlign: "center" }}>
+                <Clock
+                  size={40}
+                  color={brand.muted}
+                  style={{ marginBottom: "16px", opacity: 0.3 }}
+                />
+                <p style={{ color: brand.muted, fontSize: "14px" }}>
+                  No transactions found for this account.
+                </p>
               </div>
             ) : (
-              <div className="overflow-hidden">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="pb-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Date</th>
-                      <th className="pb-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Transaction Details</th>
-                      <th className="pb-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Type</th>
-                      <th className="pb-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Debit</th>
-                      <th className="pb-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Credit</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {accountTransactions.slice(0, 5).map((tx, idx) => {
-                      const line = tx.lines?.find((l: any) => String(l.account) === String(selectedAccount.id || selectedAccount._id) || l.accountName === selectedAccount.name);
-                      return (
-                        <tr key={tx.id || idx} className="group hover:bg-slate-50/30 transition-colors">
-                          <td className="py-4 text-[13px] text-slate-600">{new Date(tx.date).toLocaleDateString("en-GB")}</td>
-                          <td className="py-4 text-[13px] font-bold text-slate-800 uppercase tracking-tight truncate max-w-[300px]">{tx.description || tx.reference || "TRANSACTION"}</td>
-                          <td className="py-4 text-[13px] text-slate-600 font-medium">{formatTransactionSourceType(tx.sourceType || tx.type)}</td>
-                          <td className="py-4 text-[13px] text-slate-900 text-right font-bold tracking-tight">
-                            {line?.debit ? `${currencyLabel}${formatMoney(line.debit)}` : ""}
-                          </td>
-                          <td className="py-4 text-[13px] text-slate-900 text-right font-bold tracking-tight">
-                            {line?.credit ? `${currencyLabel}${formatMoney(line.credit)}` : ""}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <button 
-                  onClick={onOpenTransactionReport}
-                  className="mt-6 text-[13px] font-bold text-blue-600 hover:text-blue-700 hover:underline transition-all underline-offset-4"
-                >
-                  Show more details
-                </button>
-              </div>
+              <>
+                <div style={{ overflowX: "auto" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      minWidth: "800px",
+                    }}
+                  >
+                    <thead>
+                      <tr
+                        style={{
+                          borderBottom: `1px solid ${brand.border}`,
+                          textAlign: "left",
+                          backgroundColor: brand.primarySoftAlt,
+                        }}
+                      >
+                        {["Date", "Transaction Details", "Type", "Debit", "Credit"].map(
+                          (heading) => (
+                            <th
+                              key={heading}
+                              style={{
+                                padding: "13px 16px",
+                                fontSize: "11px",
+                                fontWeight: 900,
+                                color: brand.muted,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.05em",
+                                textAlign:
+                                  heading === "Debit" || heading === "Credit"
+                                    ? "right"
+                                    : "left",
+                              }}
+                            >
+                              {heading}
+                            </th>
+                          ),
+                        )}
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {accountTransactions.map((transaction, index) => {
+                        const line = getAccountLine(transaction, selectedAccount);
+
+                        return (
+                          <tr
+                            key={`${transaction._id || transaction.id || index}`}
+                            style={{
+                              borderBottom: "1px solid #edf4f5",
+                              cursor: "pointer",
+                              backgroundColor:
+                                index % 2 === 0 ? "#ffffff" : brand.primarySoftAlt,
+                            }}
+                            onClick={onOpenTransactionReport}
+                          >
+                            <td
+                              style={{
+                                padding: "15px 16px",
+                                fontSize: "14px",
+                                color: brand.text,
+                                fontWeight: 700,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {new Date(transaction.date).toLocaleDateString(
+                                "en-GB",
+                                {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                },
+                              )}
+                            </td>
+
+                            <td
+                              style={{
+                                padding: "15px 16px",
+                                fontSize: "14px",
+                                color: brand.text,
+                              }}
+                            >
+                              {transaction.description ||
+                                transaction.reference ||
+                                "Manual Journal"}
+                            </td>
+
+                            <td
+                              style={{
+                                padding: "15px 16px",
+                                fontSize: "14px",
+                                color: brand.muted,
+                              }}
+                            >
+                              {formatTransactionSourceType(
+                                transaction.sourceType || transaction.type,
+                              )}
+                            </td>
+
+                            <td
+                              style={{
+                                padding: "15px 16px",
+                                fontSize: "14px",
+                                color: brand.text,
+                                textAlign: "right",
+                                fontWeight: 700,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {line?.debit
+                                ? `${currencyLabel}${formatMoney(line.debit)}`
+                                : ""}
+                            </td>
+
+                            <td
+                              style={{
+                                padding: "15px 16px",
+                                fontSize: "14px",
+                                color: brand.text,
+                                textAlign: "right",
+                                fontWeight: 700,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {line?.credit
+                                ? `${currencyLabel}${formatMoney(line.credit)}`
+                                : ""}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+
+                    <tfoot>
+                      <tr
+                        style={{
+                          backgroundColor: brand.primarySoft,
+                          fontWeight: 800,
+                        }}
+                      >
+                        <td
+                          colSpan={3}
+                          style={{
+                            padding: "15px 16px",
+                            textAlign: "right",
+                            color: brand.text,
+                          }}
+                        >
+                          Total
+                        </td>
+
+                        <td
+                          style={{
+                            padding: "15px 16px",
+                            textAlign: "right",
+                            color: brand.text,
+                          }}
+                        >
+                          {formatMoney(transactionTotals.debit)}
+                        </td>
+
+                        <td
+                          style={{
+                            padding: "15px 16px",
+                            textAlign: "right",
+                            color: brand.text,
+                          }}
+                        >
+                          {formatMoney(transactionTotals.credit)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                <div style={{ marginTop: "14px", textAlign: "right" }}>
+                  <button
+                    type="button"
+                    onClick={onOpenTransactionReport}
+                    style={{
+                      border: `1px solid ${brand.primary}`,
+                      backgroundColor: brand.primarySoft,
+                      color: brand.primaryDark,
+                      borderRadius: "10px",
+                      fontSize: "14px",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      padding: "10px 14px",
+                    }}
+                  >
+                    Show more details
+                  </button>
+                </div>
+              </>
             )}
           </section>
         </div>

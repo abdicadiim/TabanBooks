@@ -61,13 +61,42 @@ const purchasesTheme = {
   successHover: '#047857'
 };
 
+const PENDING_VENDOR_STORAGE_KEY = "pending-vendor-save";
+
+const readPendingVendor = () => {
+  try {
+    const cached = sessionStorage.getItem(PENDING_VENDOR_STORAGE_KEY);
+    return cached ? JSON.parse(cached) : null;
+  } catch (error) {
+    return null;
+  }
+};
+
+const mergePendingVendor = (vendorsList) => {
+  const pendingVendor = readPendingVendor();
+  if (!pendingVendor) {
+    return vendorsList;
+  }
+
+  const pendingId = String(pendingVendor?.id || pendingVendor?._id || "").trim();
+  if (!pendingId) {
+    return vendorsList;
+  }
+
+  const filteredVendors = (Array.isArray(vendorsList) ? vendorsList : []).filter(
+    (vendor) => String(vendor?.id || vendor?._id || "").trim() !== pendingId
+  );
+
+  return [pendingVendor, ...filteredVendors];
+};
+
 export default function Vendor() {
   const navigate = useNavigate();
   const location = useLocation();
   const [vendors, setVendors] = useState(() => {
     try {
       const cached = localStorage.getItem("vendors");
-      return cached ? JSON.parse(cached) : [];
+      return mergePendingVendor(cached ? JSON.parse(cached) : []);
     } catch (error) {
       return [];
     }
@@ -276,9 +305,10 @@ export default function Vendor() {
       .replace(/\b\w/g, (char) => char.toUpperCase());
   };
   const persistVendors = (nextVendors) => {
-    setVendors(nextVendors);
+    const mergedVendors = mergePendingVendor(nextVendors);
+    setVendors(mergedVendors);
     try {
-      localStorage.setItem("vendors", JSON.stringify(nextVendors));
+      localStorage.setItem("vendors", JSON.stringify(mergedVendors));
     } catch (storageError) {
     }
   };
@@ -1144,12 +1174,37 @@ export default function Vendor() {
     },
   };
 
-  const handleDeleteSelected = () => {
-    if (selectedVendors.length === 0) {
+  const deleteSelectedVendors = async (vendorIds = selectedVendors) => {
+    const idsToDelete = vendorIds
+      .map((vendorId) => String(vendorId || "").trim())
+      .filter(Boolean);
+
+    if (idsToDelete.length === 0) {
       toast.error("Please select at least one vendor to delete.");
       return;
     }
-    setShowDeleteModal(true);
+
+    const count = idsToDelete.length;
+    const previousVendors = [...vendors];
+    const remainingVendors = vendors.filter((vendor) => !idsToDelete.includes(getVendorId(vendor)));
+
+    persistVendors(remainingVendors);
+    setSelectedVendors([]);
+    setShowDeleteModal(false);
+    toast.success(`Vendor${count > 1 ? "s" : ""} deleted successfully.`);
+    window.dispatchEvent(new Event("vendorSaved"));
+
+    try {
+      await vendorsAPI.bulkDelete(idsToDelete);
+    } catch (error) {
+      persistVendors(previousVendors);
+      window.dispatchEvent(new Event("vendorSaved"));
+      toast.error(error?.message || "Failed to delete selected vendors.");
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    void deleteSelectedVendors();
   };
 
   const handleClearSelection = () => {
@@ -1581,8 +1636,13 @@ export default function Vendor() {
               Merge
             </button>
             <button
+              type="button"
               style={styles.bulkActionButton}
-              onClick={handleDeleteSelected}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                handleDeleteSelected();
+              }}
               onMouseEnter={(e) => (e.target.style.backgroundColor = "#fee2e2")}
               onMouseLeave={(e) => (e.target.style.backgroundColor = "#f3f4f6")}
             >
@@ -2301,7 +2361,9 @@ export default function Vendor() {
                     onClick={(e) => {
                       // Don't navigate if clicking on checkbox or its container
                       if (!e.target.closest('input[type="checkbox"]') && !e.target.closest('td:first-child')) {
-                        navigate(`/purchases/vendors/${vendorId}`);
+                        navigate(`/purchases/vendors/${vendorId}`, {
+                          state: { vendor },
+                        });
                       }
                     }}
                     onMouseEnter={(e) => {
@@ -4461,30 +4523,7 @@ function NewCustomViewModal({ onClose, onSave }) {
       <DeleteConfirmationModal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
-        onConfirm={async () => {
-          const idsToDelete = selectedVendors
-            .map((vendorId) => String(vendorId || "").trim())
-            .filter(Boolean);
-
-          if (idsToDelete.length === 0) {
-            setShowDeleteModal(false);
-            return;
-          }
-
-          const count = idsToDelete.length;
-          try {
-            await vendorsAPI.bulkDelete(idsToDelete);
-
-            const remainingVendors = vendors.filter((vendor) => !idsToDelete.includes(getVendorId(vendor)));
-            persistVendors(remainingVendors);
-            setSelectedVendors([]);
-            setShowDeleteModal(false);
-            toast.success(`Vendor${count > 1 ? "s" : ""} deleted successfully.`);
-            window.dispatchEvent(new Event("vendorSaved"));
-          } catch (error) {
-            toast.error(error?.message || "Failed to delete selected vendors.");
-          }
-        }}
+        onConfirm={() => deleteSelectedVendors()}
         entityName="vendor(s)"
         count={selectedVendors.length}
       />

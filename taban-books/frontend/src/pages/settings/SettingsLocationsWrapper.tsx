@@ -18,9 +18,7 @@ export default function SettingsLocationsWrapper() {
   }
 
   return (
-    <SettingsLayout>
-      <Component />
-    </SettingsLayout>
+    <Component />
   );
 }
 

@@ -8,6 +8,10 @@ import ExportVendorCredits from "./ExportVendorCredits";
 import { settingsAPI, vendorCreditsAPI } from "../../../services/api";
 import toast from "react-hot-toast";
 import { downloadVendorCreditsPaperPdf } from "./vendorCreditPdf";
+import {
+  useDeleteVendorCreditsMutation,
+  useVendorCreditsListQuery,
+} from "./vendorCreditQueries";
 
 const VENDOR_CREDITS_LIST_CACHE_KEY = "vendor-credits-list-cache";
 
@@ -25,11 +29,27 @@ const readCachedVendorCredits = () => {
   }
 };
 
-const extractVendorCreditsRows = (response: any): any[] => {
-  if (Array.isArray(response)) return response;
-  if (Array.isArray(response?.data)) return response.data;
-  if (Array.isArray(response?.data?.data)) return response.data.data;
-  return [];
+const mergeVendorCreditIntoList = (credits: any[], incoming: any) => {
+  if (!incoming || typeof incoming !== "object") return Array.isArray(credits) ? credits : [];
+
+  const nextCredits = Array.isArray(credits) ? [...credits] : [];
+  const incomingId = String(incoming.id || incoming._id || "").trim();
+  const incomingCreditNote = String(incoming.creditNote || incoming.vendorCreditNumber || "").trim();
+  const existingIndex = nextCredits.findIndex((credit: any) => {
+    const existingId = String(credit?.id || credit?._id || "").trim();
+    const existingCreditNote = String(credit?.creditNote || credit?.vendorCreditNumber || "").trim();
+    return (
+      (incomingId && existingId === incomingId) ||
+      (incomingCreditNote && existingCreditNote === incomingCreditNote)
+    );
+  });
+
+  if (existingIndex >= 0) {
+    nextCredits[existingIndex] = { ...nextCredits[existingIndex], ...incoming };
+    return nextCredits;
+  }
+
+  return [incoming, ...nextCredits];
 };
 
 const normalizeVendorCreditView = (value: any): string => {
@@ -48,6 +68,8 @@ const normalizeVendorCreditView = (value: any): string => {
 export default function VendorCredits() {
   const navigate = useNavigate();
   const location = useLocation();
+  const cachedVendorCredits = useMemo(() => readCachedVendorCredits(), []);
+  const pendingVendorCredit = location.state?.pendingVendorCredit || null;
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
@@ -63,8 +85,8 @@ export default function VendorCredits() {
   const exportSubmenuRef = useRef(null);
   const [selectedView, setSelectedView] = useState("All");
   const [showCustomViewModal, setShowCustomViewModal] = useState(false);
-  const [vendorCredits, setVendorCredits] = useState<any[]>(() => readCachedVendorCredits());
-  const [hasLoadedInitialCredits, setHasLoadedInitialCredits] = useState(() => readCachedVendorCredits().length > 0);
+  const [vendorCredits, setVendorCredits] = useState<any[]>(cachedVendorCredits);
+  const [hasLoadedInitialCredits, setHasLoadedInitialCredits] = useState(() => cachedVendorCredits.length > 0);
   const [organizationInfo, setOrganizationInfo] = useState<any>(null);
   const [selectedCredits, setSelectedCredits] = useState<any[]>([]);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
@@ -95,17 +117,14 @@ export default function VendorCredits() {
   const dropdownRef = useRef(null);
   const moreMenuRef = useRef(null);
   const columnsMenuRef = useRef(null);
+  const vendorCreditsQuery = useVendorCreditsListQuery({ initialData: cachedVendorCredits });
+  const deleteVendorCreditsMutation = useDeleteVendorCreditsMutation();
 
   const loadVendorCredits = async (quiet = false) => {
     if (!quiet) setIsRefreshing(true);
     try {
-      const response = await vendorCreditsAPI.getAll();
-      const rows = extractVendorCreditsRows(response);
-      if (rows.length > 0) {
-        setVendorCredits(rows);
-      } else {
-        setVendorCredits([]);
-      }
+      const result = await vendorCreditsQuery.refetch();
+      setVendorCredits(Array.isArray(result.data) ? result.data : []);
     } catch (error) {
       console.error("Error loading vendor credits:", error);
       toast.error("Failed to load vendor credits");
@@ -133,9 +152,24 @@ export default function VendorCredits() {
   };
 
   useEffect(() => {
-    loadVendorCredits();
     loadOrganizationInfo();
   }, []);
+
+  useEffect(() => {
+    if (Array.isArray(vendorCreditsQuery.data)) {
+      setVendorCredits((prev) =>
+        pendingVendorCredit
+          ? mergeVendorCreditIntoList(vendorCreditsQuery.data, pendingVendorCredit)
+          : vendorCreditsQuery.data
+      );
+      setHasLoadedInitialCredits(true);
+    }
+  }, [vendorCreditsQuery.data, pendingVendorCredit]);
+
+  useEffect(() => {
+    if (!pendingVendorCredit) return;
+    setVendorCredits((prev) => mergeVendorCreditIntoList(prev, pendingVendorCredit));
+  }, [pendingVendorCredit]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -178,9 +212,9 @@ export default function VendorCredits() {
   const handleDeleteSelected = async () => {
     if (window.confirm(`Are you sure you want to delete ${selectedCredits.length} vendor credit(s)?`)) {
       try {
-        await vendorCreditsAPI.bulkDelete(selectedCredits);
-        toast.success("Vendor credit(s) deleted successfully");
-        loadVendorCredits();
+        const toastId = toast.loading("Deleting vendor credits...");
+        await deleteVendorCreditsMutation.mutateAsync({ ids: selectedCredits.map(String) });
+        toast.success("Vendor credit(s) deleted successfully", { id: toastId });
         setSelectedCredits([]);
       } catch (error: any) {
         console.error("Error deleting vendor credits:", error);
@@ -222,6 +256,7 @@ export default function VendorCredits() {
           })
         )
       );
+      await vendorCreditsQuery.refetch();
       await loadVendorCredits(true);
       setSelectedCredits([]);
       toast.success(`Updated ${selectedIds.length} vendor credit(s)`);

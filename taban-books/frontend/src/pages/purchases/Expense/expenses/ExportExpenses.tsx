@@ -206,7 +206,13 @@ function NewExportTemplateModal({ onClose, onSave }) {
     );
 }
 
-export default function ExportExpenses({ onClose, exportType = "expenses", data = [] }) {
+interface ExportExpensesProps {
+    onClose: () => void;
+    exportType?: string;
+    data?: any[];
+}
+
+export default function ExportExpenses({ onClose, exportType = "expenses", data = [] }: ExportExpensesProps) {
     const [module, setModule] = useState("Expenses");
     const [dataRange, setDataRange] = useState("all");
     const [specificPeriod, setSpecificPeriod] = useState({ start: "", end: "" });

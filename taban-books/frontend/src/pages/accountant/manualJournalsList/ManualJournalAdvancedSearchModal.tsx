@@ -28,10 +28,7 @@ export function ManualJournalAdvancedSearchModal({
   }
 
   return (
-    <div
-      style={overlayStyle}
-      onClick={onClose}
-    >
+    <div style={overlayStyle} onClick={onClose}>
       <div
         style={{
           ...modalStyle,
@@ -41,13 +38,28 @@ export function ManualJournalAdvancedSearchModal({
       >
         <div style={headerStyle}>
           <div>
-            <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 700, color: "#111827" }}>
+            <h2
+              style={{
+                margin: 0,
+                fontSize: "20px",
+                fontWeight: 700,
+                color: "#111827",
+              }}
+            >
               Advanced Search
             </h2>
-            <p style={{ margin: "6px 0 0", fontSize: "14px", color: "#64748b" }}>
-              Filter journals by number, date, amount, notes, and reporting fields.
+            <p
+              style={{
+                margin: "6px 0 0",
+                fontSize: "14px",
+                color: "#64748b",
+              }}
+            >
+              Filter journals by number, date, amount, notes, and reporting
+              fields.
             </p>
           </div>
+
           <button type="button" onClick={onClose} style={closeButtonStyle}>
             <X size={18} />
           </button>
@@ -63,11 +75,16 @@ export function ManualJournalAdvancedSearchModal({
         >
           <SearchInput
             label="View"
-            value={formData.filterType}
             input={
               <select
                 value={formData.filterType}
-                onChange={(event) => onChange("filterType", event.target.value as ManualJournalSearchForm["filterType"])}
+                onChange={(event) =>
+                  onChange(
+                    "filterType",
+                    event.target
+                      .value as ManualJournalSearchForm["filterType"],
+                  )
+                }
                 style={fieldStyle}
               >
                 <option value="All">All</option>
@@ -76,33 +93,37 @@ export function ManualJournalAdvancedSearchModal({
               </select>
             }
           />
+
           <SearchInput
             label="Journal#"
-            value={formData.journalNumber}
             input={
               <input
                 type="text"
                 value={formData.journalNumber}
-                onChange={(event) => onChange("journalNumber", event.target.value)}
+                onChange={(event) =>
+                  onChange("journalNumber", event.target.value)
+                }
                 style={fieldStyle}
               />
             }
           />
+
           <SearchInput
             label="Reference#"
-            value={formData.referenceNumber}
             input={
               <input
                 type="text"
                 value={formData.referenceNumber}
-                onChange={(event) => onChange("referenceNumber", event.target.value)}
+                onChange={(event) =>
+                  onChange("referenceNumber", event.target.value)
+                }
                 style={fieldStyle}
               />
             }
           />
+
           <SearchInput
             label="Status"
-            value={formData.status}
             input={
               <select
                 value={formData.status}
@@ -116,9 +137,9 @@ export function ManualJournalAdvancedSearchModal({
               </select>
             }
           />
+
           <SearchInput
             label="Date From"
-            value={formData.dateFrom}
             input={
               <input
                 type="date"
@@ -128,9 +149,9 @@ export function ManualJournalAdvancedSearchModal({
               />
             }
           />
+
           <SearchInput
             label="Date To"
-            value={formData.dateTo}
             input={
               <input
                 type="date"
@@ -140,9 +161,9 @@ export function ManualJournalAdvancedSearchModal({
               />
             }
           />
+
           <SearchInput
             label="Account"
-            value={formData.account}
             input={
               <input
                 type="text"
@@ -152,9 +173,9 @@ export function ManualJournalAdvancedSearchModal({
               />
             }
           />
+
           <SearchInput
             label="Tax"
-            value={formData.tax}
             input={
               <input
                 type="text"
@@ -164,9 +185,9 @@ export function ManualJournalAdvancedSearchModal({
               />
             }
           />
+
           <SearchInput
             label="Vendor Name"
-            value={formData.vendorName}
             input={
               <input
                 type="text"
@@ -176,21 +197,23 @@ export function ManualJournalAdvancedSearchModal({
               />
             }
           />
+
           <SearchInput
             label="Journal Type"
-            value={formData.journalType}
             input={
               <input
                 type="text"
                 value={formData.journalType}
-                onChange={(event) => onChange("journalType", event.target.value)}
+                onChange={(event) =>
+                  onChange("journalType", event.target.value)
+                }
                 style={fieldStyle}
               />
             }
           />
+
           <SearchInput
             label="Total From"
-            value={formData.totalFrom}
             input={
               <input
                 type="number"
@@ -200,9 +223,9 @@ export function ManualJournalAdvancedSearchModal({
               />
             }
           />
+
           <SearchInput
             label="Total To"
-            value={formData.totalTo}
             input={
               <input
                 type="number"
@@ -212,9 +235,9 @@ export function ManualJournalAdvancedSearchModal({
               />
             }
           />
+
           <SearchInput
             label="Notes"
-            value={formData.notes}
             input={
               <input
                 type="text"
@@ -224,37 +247,43 @@ export function ManualJournalAdvancedSearchModal({
               />
             }
           />
+
           <SearchInput
             label="Project Name"
-            value={formData.projectName}
             input={
               <input
                 type="text"
                 value={formData.projectName}
-                onChange={(event) => onChange("projectName", event.target.value)}
+                onChange={(event) =>
+                  onChange("projectName", event.target.value)
+                }
                 style={fieldStyle}
               />
             }
           />
+
           <SearchInput
             label="Customer Name"
-            value={formData.customerName}
             input={
               <input
                 type="text"
                 value={formData.customerName}
-                onChange={(event) => onChange("customerName", event.target.value)}
+                onChange={(event) =>
+                  onChange("customerName", event.target.value)
+                }
                 style={fieldStyle}
               />
             }
           />
+
           <SearchInput
             label="Reporting Method"
-            value={formData.reportingMethod}
             input={
               <select
                 value={formData.reportingMethod}
-                onChange={(event) => onChange("reportingMethod", event.target.value)}
+                onChange={(event) =>
+                  onChange("reportingMethod", event.target.value)
+                }
                 style={fieldStyle}
               >
                 <option value="">Any reporting method</option>
@@ -288,11 +317,18 @@ function SearchInput({
 }: {
   input: React.ReactNode;
   label: string;
-  value: string;
 }) {
   return (
     <label style={{ display: "grid", gap: "8px" }}>
-      <span style={{ fontSize: "13px", fontWeight: 700, color: "#334155" }}>{label}</span>
+      <span
+        style={{
+          fontSize: "13px",
+          fontWeight: 700,
+          color: "#334155",
+        }}
+      >
+        {label}
+      </span>
       {input}
     </label>
   );
@@ -302,19 +338,20 @@ const overlayStyle: React.CSSProperties = {
   position: "fixed",
   inset: 0,
   backgroundColor: "rgba(15, 23, 42, 0.45)",
+  zIndex: 9999,
   display: "flex",
-  alignItems: "center",
   justifyContent: "center",
-  zIndex: 4000,
-  padding: "20px",
+  alignItems: "flex-start",
+  padding: "0 20px 20px",
 };
 
 const modalStyle: React.CSSProperties = {
   width: "100%",
   backgroundColor: "#ffffff",
-  borderRadius: "20px",
+  borderRadius: "0 0 20px 20px",
   boxShadow: "0 24px 48px rgba(15, 23, 42, 0.18)",
   overflow: "hidden",
+  marginTop: "0px",
 };
 
 const headerStyle: React.CSSProperties = {

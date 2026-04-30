@@ -4,10 +4,10 @@ import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp, Search, Upload as UploadIcon, Trash2, Image as ImageIcon, File, X, Plus, PlusCircle, Mail, Building2, Check } from "lucide-react";
 import { toast } from "react-toastify";
 
-import DatePicker from "../../../components/DatePicker";
-import { chartOfAccountsAPI, customersAPI, locationsAPI, projectsAPI, reportingTagsAPI, settingsAPI, taxesAPI } from "../../../services/api";
-import { useCurrency } from "../../../hooks/useCurrency";
-import { useTaxDropdownStyle } from "../../../hooks/Taxdropdownstyle";
+import DatePicker from "../../../../components/DatePicker";
+import { chartOfAccountsAPI, customersAPI, locationsAPI, projectsAPI, reportingTagsAPI, settingsAPI, taxesAPI } from "../../../../services/api";
+import { useCurrency } from "../../../../hooks/useCurrency";
+import { useTaxDropdownStyle } from "../../../../hooks/Taxdropdownstyle";
 import { filterActiveRecords } from "../shared/activeFilters";
 
 const safeReadLocalArray = (keys: string[]) => {

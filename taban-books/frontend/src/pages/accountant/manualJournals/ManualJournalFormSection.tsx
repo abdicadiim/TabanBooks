@@ -12,10 +12,12 @@ interface ManualJournalFormSectionProps {
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
+  minHeight: "46px",
   border: "1px solid #d1d5db",
-  borderRadius: "12px",
-  padding: "12px 14px",
+  borderRadius: "10px",
+  padding: "10px 12px",
   fontSize: "14px",
+  lineHeight: 1.4,
   color: "#111827",
   backgroundColor: "#ffffff",
   outline: "none",
@@ -29,58 +31,43 @@ export function ManualJournalFormSection({
   return (
     <section
       style={{
-        border: "1px solid #e5e7eb",
-        borderRadius: "20px",
+        borderTop: "1px solid #e5e7eb",
+        borderBottom: "1px solid #e5e7eb",
         backgroundColor: "#ffffff",
-        padding: "24px",
-        boxShadow: "0 12px 30px rgba(15, 23, 42, 0.04)",
+        padding: "20px 0 18px",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          gap: "12px",
-          marginBottom: "20px",
-        }}
-      >
-        <div>
-          <h2
-            style={{
-              margin: 0,
-              fontSize: "20px",
-              fontWeight: 700,
-              color: "#111827",
-            }}
-          >
-            Journal Details
-          </h2>
-          <p
-            style={{
-              margin: "6px 0 0",
-              fontSize: "14px",
-              color: "#6b7280",
-              lineHeight: 1.6,
-            }}
-          >
-            Keep the top-level details small and predictable, then manage the
-            accounting lines below.
-          </p>
-        </div>
-      </div>
+      <style>
+        {`
+          .manual-journal-details-form {
+            display: grid;
+            gap: 16px;
+          }
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: "16px",
-        }}
-      >
-        <label style={{ display: "grid", gap: "8px" }}>
-          <span style={{ fontSize: "13px", fontWeight: 600, color: "#111827" }}>
-            Date
+          .manual-journal-details-row {
+            display: grid;
+            grid-template-columns: 250px minmax(320px, 600px);
+            align-items: center;
+            gap: 16px;
+          }
+
+          .manual-journal-details-row--notes {
+            align-items: start;
+          }
+
+          @media (max-width: 860px) {
+            .manual-journal-details-row {
+              grid-template-columns: minmax(0, 1fr);
+              gap: 8px;
+            }
+          }
+        `}
+      </style>
+
+      <div className="manual-journal-details-form">
+        <label className="manual-journal-details-row">
+          <span style={{ fontSize: "13px", fontWeight: 600, color: "#dc2626" }}>
+            Date*
           </span>
           <input
             type="date"
@@ -90,9 +77,9 @@ export function ManualJournalFormSection({
           />
         </label>
 
-        <label style={{ display: "grid", gap: "8px" }}>
-          <span style={{ fontSize: "13px", fontWeight: 600, color: "#111827" }}>
-            Journal Number
+        <label className="manual-journal-details-row">
+          <span style={{ fontSize: "13px", fontWeight: 600, color: "#dc2626" }}>
+            Journal#*
           </span>
           <input
             type="text"
@@ -103,7 +90,7 @@ export function ManualJournalFormSection({
           />
         </label>
 
-        <label style={{ display: "grid", gap: "8px" }}>
+        <label className="manual-journal-details-row">
           <span style={{ fontSize: "13px", fontWeight: 600, color: "#111827" }}>
             Reference
           </span>
@@ -116,7 +103,40 @@ export function ManualJournalFormSection({
           />
         </label>
 
-        <label style={{ display: "grid", gap: "8px" }}>
+        <div className="manual-journal-details-row">
+          <span style={{ fontSize: "13px", fontWeight: 600, color: "#111827" }}>
+            Reporting Method
+          </span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "22px" }}>
+            {MANUAL_JOURNAL_REPORTING_METHOD_OPTIONS.map((option) => (
+              <label
+                key={option.value}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "14px",
+                  fontWeight: 500,
+                  color: "#111827",
+                }}
+              >
+                <input
+                  type="radio"
+                  name="manual-journal-reporting-method"
+                  value={option.value}
+                  checked={formData.reportingMethod === option.value}
+                  onChange={(event) =>
+                    onChange("reportingMethod", event.target.value)
+                  }
+                  style={{ width: "16px", height: "16px" }}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <label className="manual-journal-details-row">
           <span style={{ fontSize: "13px", fontWeight: 600, color: "#111827" }}>
             Currency
           </span>
@@ -135,45 +155,17 @@ export function ManualJournalFormSection({
             ))}
           </select>
         </label>
-      </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-          gap: "16px",
-          marginTop: "16px",
-        }}
-      >
-        <label style={{ display: "grid", gap: "8px" }}>
-          <span style={{ fontSize: "13px", fontWeight: 600, color: "#111827" }}>
-            Reporting Method
-          </span>
-          <select
-            value={formData.reportingMethod}
-            onChange={(event) =>
-              onChange("reportingMethod", event.target.value)
-            }
-            style={fieldStyle}
-          >
-            {MANUAL_JOURNAL_REPORTING_METHOD_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label style={{ display: "grid", gap: "8px" }}>
-          <span style={{ fontSize: "13px", fontWeight: 600, color: "#111827" }}>
-            Notes
+        <label className="manual-journal-details-row manual-journal-details-row--notes">
+          <span style={{ fontSize: "13px", fontWeight: 600, color: "#dc2626" }}>
+            Notes*
           </span>
           <textarea
             value={formData.notes}
             onChange={(event) => onChange("notes", event.target.value)}
             placeholder="Add context for reviewers or period-end notes"
             rows={4}
-            style={{ ...fieldStyle, resize: "vertical" }}
+            style={{ ...fieldStyle, minHeight: "104px", resize: "vertical" }}
           />
         </label>
       </div>

@@ -20,13 +20,13 @@ import {
   Trash2,
   PlusCircle,
 } from "lucide-react";
-import DatePicker from "../../../components/DatePicker";
+import DatePicker from "../../../../components/DatePicker";
 import NewVendorModal from "../bills/NewVendorModal";
-import { vendorsAPI, customersAPI, expensesAPI, chartOfAccountsAPI, journalEntriesAPI, projectsAPI, currenciesAPI as dbCurrenciesAPI, taxesAPI, reportingTagsAPI, locationsAPI } from "../../../services/api";
-import NewCurrencyModal from "../../settings/organization-settings/setup-configurations/currencies/NewCurrencyModal";
+import { vendorsAPI, customersAPI, expensesAPI, chartOfAccountsAPI, journalEntriesAPI, projectsAPI, currenciesAPI as dbCurrenciesAPI, taxesAPI, reportingTagsAPI, locationsAPI } from "../../../../services/api";
+import NewCurrencyModal from "../../../settings/organization-settings/setup-configurations/currencies/NewCurrencyModal";
 import NewTaxModal from "../../../../components/modals/NewTaxModal";
-import { createTaxLocal, readTaxesLocal } from "../../settings/organization-settings/taxes-compliance/TAX/storage";
-import { useCurrency } from "../../../hooks/useCurrency";
+import { createTaxLocal, readTaxesLocal } from "../../../sales/salesModel";
+import { useCurrency } from "../../../../hooks/useCurrency";
 import {
   getTaxId,
   getTaxName,
@@ -36,9 +36,8 @@ import {
   taxLabel,
   useTaxDropdownStyle,
   useTaxQuickCreateState,
-} from "../../../hooks/Taxdropdownstyle";
+} from "../../../../hooks/Taxdropdownstyle";
 import { filterActiveRecords } from "../shared/activeFilters";
-import RecordMileage from "./RecordMileage";
 import { toast } from "react-toastify";
 
 // Accounts API
@@ -284,6 +283,7 @@ export default function RecordExpense() {
   const projectRef = useRef(null);
   const uploadDropdownRef = useRef(null);
   const paidThroughRef = useRef(null);
+  const vendorRef = useRef(null);
   const initialLocationsCache = getInitialLocations();
   const initialCurrenciesCache = getInitialCurrencies();
   const initialLocationName =
@@ -390,6 +390,10 @@ export default function RecordExpense() {
   const [bulkLocationSearch, setBulkLocationSearch] = useState("");
   const [bulkTaxOpenIndex, setBulkTaxOpenIndex] = useState<number | null>(null);
   const [bulkTaxSearch, setBulkTaxSearch] = useState("");
+  const [bulkPaidThroughOpenIndex, setBulkPaidThroughOpenIndex] = useState<number | null>(null);
+  const [bulkPaidThroughSearch, setBulkPaidThroughSearch] = useState("");
+  const [bulkVendorOpenIndex, setBulkVendorOpenIndex] = useState<number | null>(null);
+  const [bulkVendorSearch, setBulkVendorSearch] = useState("");
   const [bulkCustomerOpenIndex, setBulkCustomerOpenIndex] = useState<number | null>(null);
   const [bulkCustomerSearch, setBulkCustomerSearch] = useState("");
   const [bulkProjectOpenIndex, setBulkProjectOpenIndex] = useState<number | null>(null);
@@ -589,6 +593,10 @@ export default function RecordExpense() {
     setBulkLocationSearch("");
     setBulkTaxOpenIndex(null);
     setBulkTaxSearch("");
+    setBulkPaidThroughOpenIndex(null);
+    setBulkPaidThroughSearch("");
+    setBulkVendorOpenIndex(null);
+    setBulkVendorSearch("");
     setBulkCustomerOpenIndex(null);
     setBulkCustomerSearch("");
     setBulkProjectOpenIndex(null);
@@ -879,7 +887,7 @@ export default function RecordExpense() {
         if (displayName && vendorId) {
           setFormData(prev => ({
             ...prev,
-            vendor: displayName,
+            vendorName: displayName,
             vendor_id: vendorId
           }));
         }
@@ -1029,7 +1037,7 @@ export default function RecordExpense() {
   });
   const [activeTab, setActiveTab] = useState("expense");
   const [isItemized, setIsItemized] = useState(false);
-  const [showMileageOverlay, setShowMileageOverlay] = useState(false);
+
   const [reportingTagDefinitions, setReportingTagDefinitions] = useState<any[]>([]);
   type ItemRow = {
     id: number;
@@ -1084,11 +1092,15 @@ export default function RecordExpense() {
     amount: "",
     currency: initialCurrencyCode,
     location: initialLocationName,
-    tax: "",
-    is_inclusive_tax: true,
+    paidThrough: "",
+    paidThrough_id: "",
+    vendorName: "",
+    vendor_id: "",
     customerName: "",
     projects: "",
     billable: false,
+    is_inclusive_tax: true,
+    tax: "",
     reportingTags: [] as any[],
     ...overrides,
   });
@@ -1150,6 +1162,13 @@ export default function RecordExpense() {
     setFormData((prev) => ({ ...prev, amount: total.toString() }));
   };
 
+  const filteredPaidThroughAccounts = React.useMemo(() => {
+    const paidThroughTypes = ['bank', 'cash', 'mobile_wallet', 'credit_card'];
+    return accounts
+      .filter(acc => acc.isActive && paidThroughTypes.includes(acc.accountType?.toLowerCase()))
+      .map(acc => ({ id: acc._id || acc.id, name: acc.accountName }));
+  }, [accounts]);
+
   // Bulk expenses state
   const [bulkExpenses, setBulkExpenses] = useState(
     Array.from({ length: 10 }, () => createBulkExpenseRow())
@@ -1169,8 +1188,9 @@ export default function RecordExpense() {
     currency: initialCurrencyCode,
     is_inclusive_tax: true,
     paidThrough: "",
+    paidThrough_id: "",
     tax: "",
-    vendor: "",
+    vendorName: "",
     vendor_id: "",
     reference: "",
     notes: "",
@@ -1387,8 +1407,9 @@ export default function RecordExpense() {
           currency: baseCurrencyCode || editExpense.currency || "",
           is_inclusive_tax: editExpense.is_inclusive_tax !== undefined ? editExpense.is_inclusive_tax : true,
           paidThrough: editExpense.paidThrough || "",
+          paidThrough_id: editExpense.paidThrough_id || "",
           tax: String(editExpense.tax || ""),
-          vendor: editExpense.vendor || "",
+          vendorName: editExpense.vendorName || editExpense.vendor || "",
           vendor_id: editExpense.vendor_id || "",
           reference: editExpense.reference || "",
           notes: editExpense.notes || "",
@@ -1445,8 +1466,9 @@ export default function RecordExpense() {
           currency: baseCurrencyCode || clonedData.currency || "",
           is_inclusive_tax: clonedData.is_inclusive_tax !== undefined ? clonedData.is_inclusive_tax : true,
           paidThrough: clonedData.paidThrough || "",
+          paidThrough_id: clonedData.paidThrough_id || "",
           tax: String(clonedData.tax || clonedData.tax_id || ""),
-          vendor: clonedData.vendor || "",
+          vendorName: clonedData.vendorName || clonedData.vendor || "",
           vendor_id: clonedData.vendor_id || "",
           reference: "",
           notes: clonedData.notes || "",
@@ -1639,83 +1661,7 @@ export default function RecordExpense() {
     fileInputRef.current?.click();
   };
 
-  const generateJournalEntry = async (expenseData: any) => {
-    try {
-      // Prefer provided account IDs; otherwise attempt to resolve by name
-      let paidThroughAccount = null;
-      if (expenseData.paid_through_account_id) {
-        paidThroughAccount = accounts.find(a => a._id === expenseData.paid_through_account_id || a.id === expenseData.paid_through_account_id);
-      }
-      if (!paidThroughAccount) {
-        paidThroughAccount = accounts.find(a => a.accountName === expenseData.paid_through_account_name || a.accountName?.toLowerCase() === (expenseData.paid_through_account_name || '').toLowerCase());
-      }
 
-      let expenseAccount = null;
-      if (expenseData.account_id) {
-        expenseAccount = accounts.find(a => a._id === expenseData.account_id || a.id === expenseData.account_id);
-      }
-      if (!expenseAccount) {
-        expenseAccount = accounts.find(a => a.accountName === expenseData.account_name || a.accountName?.toLowerCase() === (expenseData.account_name || '').toLowerCase());
-      }
-
-      if (!paidThroughAccount || !expenseAccount) {
-        console.error('Accounts required for journal entry not found:', {
-          expenseAccount: expenseData.account_name || expenseData.account_id,
-          paidThrough: expenseData.paid_through_account_name || expenseData.paid_through_account_id
-        });
-        // Do not block expense creation — log and return so system remains consistent
-        return;
-      }
-
-      // Build journal entry; include currency on entry and lines
-      const amt = parseFloat(expenseData.amount) || 0;
-      const journalEntry: any = {
-        date: expenseData.date,
-        referenceNumber: `EXP-${Date.now()}`,
-        description: `Expense - ${expenseData.description || 'No description'}`,
-        currency: expenseData.currency_code || expenseData.currency || undefined,
-        journalLines: [
-          {
-            accountId: expenseAccount._id || expenseAccount.id,
-            accountName: expenseAccount.accountName,
-            accountType: expenseAccount.accountType,
-            debit: amt,
-            credit: 0,
-            currency: expenseData.currency_code || expenseData.currency || undefined,
-            description: `Expense: ${expenseData.description || 'No description'}`
-          },
-          {
-            accountId: paidThroughAccount._id || paidThroughAccount.id,
-            accountName: paidThroughAccount.accountName,
-            accountType: paidThroughAccount.accountType,
-            debit: 0,
-            credit: amt,
-            currency: expenseData.currency_code || expenseData.currency || undefined,
-            description: `Paid through: ${paidThroughAccount.accountName}`
-          }
-        ],
-        totalDebit: amt,
-        totalCredit: amt,
-        status: 'Posted',
-        notes: `Auto-generated journal entry for expense ${expenseData.referenceNumber || 'N/A'}`,
-        relatedTransaction: {
-          type: 'Expense',
-          id: expenseData.id,
-          referenceNumber: expenseData.reference_number
-        }
-      };
-
-      // Save journal entry
-      const response = await journalEntriesAPI.create(journalEntry);
-      if (response && response.success) {
-        console.log('Journal entry created successfully:', response.data);
-      } else {
-        console.error('Failed to create journal entry:', response);
-      }
-    } catch (error) {
-      console.error('Error generating journal entry:', error);
-    }
-  };
 
   const handleSave = async (navigateAway = true) => {
     if (saveLoadingState) return false;
@@ -1742,7 +1688,6 @@ export default function RecordExpense() {
 
           // Resolve account IDs when possible to make journal creation robust
           const expenseAccountObj = accounts.find(a => a.accountName === exp.expenseAccount || a.accountName?.toLowerCase() === (exp.expenseAccount || '').toLowerCase());
-          const selectedTax = (Array.isArray(taxes) ? taxes : []).find((tax: any) => getTaxId(tax) === String(exp.tax || ""));
 
           const expenseData: any = {
             date: formatDateForAPI(exp.date),
@@ -1753,22 +1698,15 @@ export default function RecordExpense() {
             description: "",
             customer_id: customer ? (customer._id || customer.id) : undefined,
             is_billable: exp.billable,
-            is_inclusive_tax: !!exp.is_inclusive_tax,
             location: exp.location || "",
+            paid_through_id: exp.paidThrough_id,
+            vendor_id: exp.vendor_id,
+            vendor_name: exp.vendorName,
           };
-          if (exp.tax) {
-            expenseData.tax_id = String(exp.tax);
-            if (selectedTax) {
-              expenseData.tax_name = String(getTaxName(selectedTax) || "");
-              expenseData.tax_rate = Number(getTaxRate(selectedTax) || 0);
-            }
-          }
 
           const response = await expensesAPI.create(expenseData);
 
           if (response && (response.code === 0 || response.success)) {
-            // Generate journal entry for the expense
-            await generateJournalEntry(expenseData);
             successCount++;
           } else {
             errorMessages.push(`Row ${exp.id}: ${response?.message || "Error"}`);
@@ -1780,7 +1718,7 @@ export default function RecordExpense() {
           window.dispatchEvent(new Event("expensesUpdated"));
 
           if (navigateAway) {
-            navigate("/expenses");
+            navigate("/purchases/expenses");
           }
           return true;
         } else {
@@ -1949,14 +1887,12 @@ export default function RecordExpense() {
       }
 
       if (response && (response.code === 0 || response.success)) {
-        // Generate journal entry for the expense
-        await generateJournalEntry(expenseData);
 
         toast.success("Expense saved successfully!");
         window.dispatchEvent(new Event("expensesUpdated"));
 
         if (navigateAway) {
-          navigate("/expenses");
+          navigate("/purchases/expenses");
         }
         return true;
       } else {
@@ -1984,45 +1920,27 @@ export default function RecordExpense() {
     if (success) {
       if (activeTab === "bulk") {
         setBulkExpenses(
-          Array.from({ length: 10 }, (_, i) => ({
-            id: Date.now() + i,
-            date: (() => {
-              const today = new Date();
-              const d = String(today.getDate()).padStart(2, '0');
-              const m = String(today.getMonth() + 1).padStart(2, '0');
-              const y = today.getFullYear();
-              return `${d}/${m}/${y}`;
-            })(),
-            expenseAccount: "",
-            amount: "",
-            currency: baseCurrencyCode || currencies.find(c => (c.isBaseCurrency || c.is_base_currency))?.code || "USD",
-            location: locationOptions[0] || "Head Office",
-            tax: "",
-            is_inclusive_tax: true,
-            customerName: "",
-            projects: "",
-            billable: false,
-            reportingTags: [],
-          }))
+          Array.from({ length: 10 }, () => createBulkExpenseRow())
         );
       } else {
         // Reset form for single expense
         setFormData({
-          location: locationOptions[0] || "Head Office",
+          location: initialLocationName,
           date: (() => {
             const today = new Date();
-            const d = String(today.getDate()).padStart(2, '0');
-            const m = String(today.getMonth() + 1).padStart(2, '0');
+            const d = String(today.getDate()).padStart(2, "0");
+            const m = String(today.getMonth() + 1).padStart(2, "0");
             const y = today.getFullYear();
             return `${d}/${m}/${y}`;
           })(),
           expenseAccount: '',
           amount: '',
-          currency: baseCurrencyCode || currencies.find(c => (c.isBaseCurrency || c.is_base_currency))?.code || 'USD',
+          currency: initialCurrencyCode,
           is_inclusive_tax: true,
           paidThrough: '',
+          paidThrough_id: '',
           tax: '',
-          vendor: '',
+          vendorName: '',
           vendor_id: '',
           reference: '',
           notes: '',
@@ -2042,6 +1960,9 @@ export default function RecordExpense() {
             value: "",
           })),
         });
+
+        // Set bulk expenses back to initial empty state
+        setBulkExpenses(Array.from({ length: 10 }, () => createBulkExpenseRow()));
         setItemRows([{
           id: 1,
           itemDetails: "",
@@ -2063,7 +1984,7 @@ export default function RecordExpense() {
   };
 
   const handleCancel = () => {
-    navigate("/expenses");
+    navigate("/purchases/expenses");
   };
 
   // Keyboard shortcuts for Save and Save and New
@@ -2283,6 +2204,14 @@ export default function RecordExpense() {
       ) {
         setProjectOpen(false);
         setProjectSearch("");
+      }
+
+      if (
+        vendorRef.current &&
+        !(vendorRef.current as HTMLDivElement).contains(event.target as Node)
+      ) {
+        setVendorOpen(false);
+        setVendorSearch("");
       }
 
       const target = event.target as HTMLElement;
@@ -3063,9 +2992,9 @@ export default function RecordExpense() {
 
   return (
     <>
-      <div className="w-full min-h-full flex flex-col overflow-y-auto scroll-smooth bg-gray-50">
+      <div className="w-full min-h-full flex flex-col overflow-y-auto scroll-smooth bg-white">
         {/* Tabs */}
-        <div className="border-b border-gray-200 bg-[#f8fafc] px-6 pt-4">
+        <div className="border-b border-gray-200 bg-white px-6 pt-4 sticky top-0 z-[100] shadow-sm">
           <div className="flex items-end gap-0">
             <button
               className={`px-5 py-3 text-sm font-medium rounded-t-md border border-b-0 transition-colors ${activeTab === "expense"
@@ -3073,23 +3002,10 @@ export default function RecordExpense() {
                 : "bg-[#f1f5f9] text-[#475569] border-[#d1d5db]"
                 }`}
               onClick={() => {
-                setShowMileageOverlay(false);
                 setActiveTab("expense");
               }}
             >
               Record Expense
-            </button>
-            <button
-              className={`px-5 py-3 text-sm font-medium rounded-t-md border border-b-0 transition-colors ${activeTab === "mileage" || showMileageOverlay
-                ? "bg-white text-[#334155] border-[#d1d5db] border-t-[3px] border-t-[#156372]"
-                : "bg-[#f8fafc] text-[#156372] border-transparent"
-                }`}
-              onClick={() => {
-                setShowMileageOverlay(false);
-                setActiveTab("mileage");
-              }}
-            >
-              Record Mileage
             </button>
             <button
               className={`px-5 py-3 text-sm font-medium rounded-t-md border border-b-0 transition-colors ${activeTab === "bulk"
@@ -3097,7 +3013,6 @@ export default function RecordExpense() {
                 : "bg-[#f8fafc] text-[#156372] border-transparent"
                 }`}
               onClick={() => {
-                setShowMileageOverlay(false);
                 setActiveTab("bulk");
               }}
             >
@@ -3160,10 +3075,10 @@ export default function RecordExpense() {
                                     setLocationOpen(false);
                                     setLocationSearch("");
                                   }}
-                                  className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between ${selected ? "bg-[#156372] text-white" : "text-gray-700 hover:bg-[#156372] hover:text-white"}`}
+                                  className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${selected ? "text-[#156372] font-semibold" : "text-gray-700 hover:bg-[#f3f4f6]"}`}
                                 >
                                   <span>{loc}</span>
-                                  {selected && <Check size={14} className="text-white" />}
+                                  {selected && <Check size={14} className="text-[#156372]" />}
                                 </button>
                               );
                             })}
@@ -3466,7 +3381,7 @@ export default function RecordExpense() {
                                             setOpenItemizedTaxIndex(null);
                                             openNewTaxQuickAction({ type: "itemized", index: idx });
                                           }}
-                                          className="w-full border-t border-gray-200 px-3 py-2 text-left text-sm text-[#156372] hover:bg-[#156372] hover:text-white flex items-center gap-2"
+                                          className="w-full border-t border-gray-200 px-3 py-2 text-left text-sm text-[#156372] hover:bg-[#f3f4f6] flex items-center gap-2"
                                         >
                                           <Plus size={14} />
                                           New Tax
@@ -3560,7 +3475,7 @@ export default function RecordExpense() {
                                                         setItemRows((prev) => {
                                                           const next = [...prev];
                                                           const current = (next[idx] || {}) as ItemRow;
-                                                          const currentTags = normalizeRowReportingTags(current.reportingTags);
+                                                          const currentTags = normalizeRowReportingTags(current.reportingTags || []);
                                                           currentTags[tagIndex] = { ...currentTags[tagIndex], value: "" };
                                                           next[idx] = { ...current, reportingTags: currentTags };
                                                           return next;
@@ -3579,7 +3494,7 @@ export default function RecordExpense() {
                                                           setItemRows((prev) => {
                                                             const next = [...prev];
                                                             const current = (next[idx] || {}) as ItemRow;
-                                                            const currentTags = normalizeRowReportingTags(current.reportingTags);
+                                                            const currentTags = normalizeRowReportingTags(current.reportingTags || []);
                                                             currentTags[tagIndex] = { ...currentTags[tagIndex], value: option };
                                                             next[idx] = { ...current, reportingTags: currentTags };
                                                             return next;
@@ -3860,7 +3775,7 @@ export default function RecordExpense() {
                             </div>
                             <button
                               type="button"
-                              className="w-full border-t border-gray-200 px-3 py-2 text-left text-sm text-[#156372] hover:bg-[#156372] hover:text-white flex items-center gap-2"
+                              className="w-full border-t border-gray-200 px-3 py-2 text-left text-sm text-[#156372] hover:bg-[#f3f4f6] flex items-center gap-2"
                               onClick={() => {
                                 openNewCustomerQuickAction();
                               }}
@@ -3934,9 +3849,10 @@ export default function RecordExpense() {
                                       setProjectOpen(false);
                                       setProjectSearch("");
                                     }}
-                                    className={`w-full px-3 py-2 text-left text-sm ${selected ? "bg-[#156372] text-white" : "text-gray-700 hover:bg-[#156372] hover:text-white"}`}
+                                    className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${selected ? "text-[#156372] font-semibold" : "text-gray-700 hover:bg-[#f3f4f6]"}`}
                                   >
-                                    {project.name}
+                                    <span>{project.name}</span>
+                                    {selected && <Check size={14} className="text-[#156372]" />}
                                   </button>
                                 );
                               })}
@@ -4082,10 +3998,10 @@ export default function RecordExpense() {
                                     setLocationOpen(false);
                                     setLocationSearch("");
                                   }}
-                                  className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between ${selected ? "bg-[#156372] text-white" : "text-gray-700 hover:bg-[#156372] hover:text-white"}`}
+                                  className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${selected ? "text-[#156372] font-semibold" : "text-gray-700 hover:bg-[#f3f4f6]"}`}
                                 >
                                   <span>{loc}</span>
-                                  {selected && <Check size={14} className="text-white" />}
+                                  {selected && <Check size={14} className="text-[#156372]" />}
                                 </button>
                               );
                             })}
@@ -4115,7 +4031,7 @@ export default function RecordExpense() {
                   {/* Category Name */}
                   <div className="grid grid-cols-[180px_1fr] items-start gap-4">
                     <label className="text-sm font-medium text-red-600 mt-2 flex items-center">
-                      Category Name<span className="ml-[1px]">*</span>
+                      Expense Account<span className="ml-[1px]">*</span>
                     </label>
                     <div className="max-w-[460px] relative" ref={expenseAccountRef}>
                       {!isItemized ? (
@@ -4130,7 +4046,7 @@ export default function RecordExpense() {
                             }}
                           >
                             <span className={!formData.expenseAccount ? "text-gray-400" : ""}>
-                              {formData.expenseAccount || "Select Category"}
+                              {formData.expenseAccount || "Select Expense Account"}
                             </span>
                             <ChevronDown size={14} className="text-gray-500" />
                           </div>
@@ -4165,7 +4081,7 @@ export default function RecordExpense() {
                                       }}
                                       className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
                                     >
-                                      <option value="">Select Category</option>
+                                      <option value="">Select Expense Account</option>
                                       {ITEMIZED_EXPENSE_ACCOUNT_OPTIONS.map(acc => (
                                         <option key={acc} value={acc}>{acc}</option>
                                       ))}
@@ -4247,8 +4163,8 @@ export default function RecordExpense() {
                                     key={account}
                                     onClick={() => handleExpenseAccountSelect(account)}
                                     className={`w-full px-6 py-2 text-sm cursor-pointer flex items-center justify-between transition-colors ${isSelected
-                                      ? "text-[#156372] font-medium hover:bg-[#156372] hover:text-white"
-                                      : "text-gray-700 hover:bg-[#156372] hover:text-white"
+                                      ? "text-[#156372] font-semibold"
+                                      : "text-gray-700 hover:bg-[#f3f4f6]"
                                       }`}
                                   >
                                     <span>{account}</span>
@@ -4297,12 +4213,13 @@ export default function RecordExpense() {
                                         setFormData((prev) => ({ ...prev, currency: currency.code }));
                                         setAmountCurrencyOpen(false);
                                       }}
-                                      className={`w-full px-3 py-2 text-left text-sm ${selected
-                                        ? "text-[#156372] font-medium hover:bg-[#156372] hover:text-white"
-                                        : "text-gray-700 hover:bg-[#156372] hover:text-white"
+                                      className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${selected
+                                        ? "text-[#156372] font-semibold"
+                                        : "text-gray-700 hover:bg-[#f3f4f6]"
                                         }`}
                                     >
-                                      {currency.code}
+                                      <span>{currency.code}</span>
+                                      {selected && <Check size={14} className="text-[#156372]" />}
                                     </button>
                                   );
                                 })}
@@ -4323,256 +4240,149 @@ export default function RecordExpense() {
                     </div>
                   </div>
 
-                  {/* Amount Is - Tax Inclusive/Exclusive */}
-                  <div className="grid grid-cols-[180px_1fr] items-center gap-4 mt-4">
-                    <label className="text-sm font-medium text-gray-700">
-                      Amount Is
+                  {/* Paid Through */}
+                  <div className="grid grid-cols-[180px_1fr] items-center gap-4 mt-6">
+                    <label className="text-sm font-medium text-red-600 flex items-center">
+                      Paid Through<span className="ml-[1px]">*</span>
                     </label>
-                    <div className="flex items-center gap-6">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <div className="relative flex items-center">
-                          <input
-                            type="radio"
-                            name="amountIs"
-                            checked={formData.is_inclusive_tax === true}
-                            onChange={() => setFormData(prev => ({ ...prev, is_inclusive_tax: true }))}
-                            className="peer h-4 w-4 cursor-pointer appearance-none rounded-full border border-gray-300 checked:border-[#156372] checked:bg-[#156372] transition-all"
-                          />
-                          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white opacity-0 peer-checked:opacity-100 pointer-events-none"></div>
+                    <div className="max-w-[460px] relative" ref={paidThroughRef}>
+                      <div
+                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 flex items-center justify-between cursor-pointer focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                        onClick={() => setPaidThroughOpen(!paidThroughOpen)}
+                      >
+                        <span className={!formData.paidThrough ? "text-gray-400" : ""}>
+                          {formData.paidThrough || "Select Account"}
+                        </span>
+                        <ChevronDown size={14} className="text-gray-500" />
+                      </div>
+                      {paidThroughOpen && (
+                        <div className="absolute top-full left-0 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-[300px] overflow-y-auto">
+                          <div className="p-2 border-b border-gray-200 flex items-center gap-2 sticky top-0 bg-white">
+                            <Search size={14} className="text-gray-400" />
+                            <input
+                              type="text"
+                              placeholder="Search accounts"
+                              value={paidThroughSearch}
+                              onChange={(e) => setPaidThroughSearch(e.target.value)}
+                              className="flex-1 border-none outline-none text-sm"
+                              autoFocus
+                            />
+                          </div>
+                          <div className="py-1">
+                            {filteredPaidThroughAccounts.filter((acc: any) => acc.name.toLowerCase().includes(paidThroughSearch.toLowerCase())).length === 0 ? (
+                              <div className="p-3 text-sm text-gray-500 text-center">No accounts found</div>
+                            ) : (
+                              filteredPaidThroughAccounts
+                                .filter((acc: any) => acc.name.toLowerCase().includes(paidThroughSearch.toLowerCase()))
+                                .map((acc: any) => (
+                                <div
+                                  key={acc.id}
+                                  onClick={() => {
+                                    setFormData(prev => ({ ...prev, paidThrough: acc.name, paidThrough_id: acc.id }));
+                                    setPaidThroughOpen(false);
+                                    setPaidThroughSearch("");
+                                  }}
+                                  className={`px-4 py-2 text-sm flex items-center justify-between cursor-pointer transition-colors ${
+                                    String(formData.paidThrough || "") === acc.name
+                                      ? "text-[#156372] font-semibold"
+                                      : "text-gray-700 hover:bg-[#f3f4f6]"
+                                  }`}
+                                >
+                                  <span>{acc.name}</span>
+                                  {String(formData.paidThrough || "") === acc.name && <Check size={14} className="text-[#156372]" />}
+                                </div>
+                              ))
+                            )}
+                          </div>
                         </div>
-                        <span className="text-sm text-gray-700">Tax Inclusive</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <div className="relative flex items-center">
-                          <input
-                            type="radio"
-                            name="amountIs"
-                            checked={formData.is_inclusive_tax === false}
-                            onChange={() => setFormData(prev => ({ ...prev, is_inclusive_tax: false }))}
-                            className="peer h-4 w-4 cursor-pointer appearance-none rounded-full border border-gray-300 checked:border-[#156372] checked:bg-[#156372] transition-all"
-                          />
-                          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white opacity-0 peer-checked:opacity-100 pointer-events-none"></div>
-                        </div>
-                        <span className="text-sm text-gray-700">Tax Exclusive</span>
-                      </label>
+                      )}
                     </div>
                   </div>
 
-                  <div className="h-px bg-gray-200 my-8"></div>
-
-                  {/* Tax */}
-                  <div className="grid grid-cols-[180px_1fr] items-center gap-4">
-                    <label className="text-sm font-medium text-gray-700">Tax</label>
-                    <div className="max-w-[460px]">
-                      <div className="relative expense-tax-dropdown">
-                        <button
-                          type="button"
-                          onClick={() => setExpenseTaxDropdownOpen((prev) => !prev)}
-                          className="h-[34px] w-full rounded border border-gray-300 bg-white px-3 text-left text-[13px] transition-colors hover:border-gray-400 outline-none"
-                          style={expenseTaxDropdownOpen ? { borderColor: "#156372" } : {}}
+                  {/* Vendor */}
+                  <div className="grid grid-cols-[180px_1fr] items-center gap-4 mt-6">
+                    <label className="text-sm font-medium text-gray-700">Vendor</label>
+                    <div className="max-w-[460px] flex items-center gap-0">
+                      <div className="flex-1 relative" ref={vendorRef}>
+                        <div
+                          className="w-full rounded-l-md rounded-r-none border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 flex items-center justify-between cursor-pointer focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                          onClick={() => setVendorOpen(!vendorOpen)}
                         >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className={formData.tax ? "text-[#1f2937]" : "text-[#6b7280]"}>
-                            {formData.tax
-                              ? taxLabel(taxes.find((tax: any) => getTaxId(tax) === String(formData.tax)) || { name: formData.tax, rate: 0 })
-                              : "Select a Tax"}
-                            </span>
-                            <ChevronDown
-                              size={14}
-                              className={`transition-transform ${expenseTaxDropdownOpen ? "rotate-180" : ""}`}
-                              style={{ color: "#156372" }}
-                            />
-                          </div>
-                        </button>
-                        {expenseTaxDropdownOpen && (
-                          <div className="absolute left-0 top-full z-[9999] mt-1 w-full rounded-xl border border-[#d6dbe8] bg-white p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
-                            <div className="p-2">
-                              <div className="flex items-center gap-2 rounded-lg border bg-slate-50/50 px-3 py-1.5 transition-all focus-within:bg-white" style={{ borderColor: "#156372" }}>
-                                <Search size={14} className="text-slate-400" />
-                                <input
-                                  type="text"
-                                  value={expenseTaxSearch}
-                                  onChange={(e) => setExpenseTaxSearch(e.target.value)}
-                                  placeholder="Search..."
-                                  className="w-full border-none bg-transparent text-[13px] text-slate-700 outline-none placeholder:text-slate-400"
-                                  autoFocus
-                                />
-                              </div>
+                          <span className={!formData.vendorName ? "text-gray-400" : ""}>
+                            {formData.vendorName || "Select or add a vendor"}
+                          </span>
+                          <ChevronDown size={14} className="text-gray-500" />
+                        </div>
+                        {vendorOpen && (
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50">
+                            <div className="p-2 border-b border-gray-200 flex items-center gap-2 bg-white sticky top-0">
+                              <Search size={14} className="text-gray-400" />
+                              <input
+                                type="text"
+                                placeholder="Search vendors"
+                                value={vendorSearch}
+                                onChange={(e) => setVendorSearch(e.target.value)}
+                                className="flex-1 rounded-md border border-[#156372] px-2.5 py-1.5 text-sm outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
+                                autoFocus
+                              />
                             </div>
-                            <div className="max-h-64 overflow-y-auto py-1 custom-scrollbar">
-                              {!hasExpenseTaxes ? (
-                                <div className="px-4 py-3 text-center text-[13px] text-slate-400">No taxes found</div>
+                            <div className="max-h-[180px] overflow-y-auto p-2 space-y-1">
+                              {loadingVendors ? (
+                                <div className="p-3 text-sm text-gray-500 text-center">Loading...</div>
+                              ) : allVendors.length === 0 ? (
+                                <div className="p-3 text-sm text-gray-500 text-center">No vendors found</div>
                               ) : (
-                                <>
-                                  {filteredExpenseNormalTaxes.length > 0 && (
-                                    <>
-                                      <div className="px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-slate-700">Tax</div>
-                                      {filteredExpenseNormalTaxes.map((tax: any) => {
-                                        const taxId = getTaxId(tax);
-                                        const label = taxLabel(tax);
-                                        const selected = String(formData.tax || "") === taxId;
-                                        return (
-                                          <button
-                                            key={taxId}
-                                            type="button"
-                                            onClick={() => {
-                                              setFormData((prev) => ({ ...prev, tax: taxId }));
-                                              setTaxAmountOverride("");
-                                              setTaxAmountEditOpen(false);
-                                              setTaxAmountEditValue("");
-                                              setExpenseTaxDropdownOpen(false);
-                                              setExpenseTaxSearch("");
-                                            }}
-                                            className={`flex w-full items-center justify-between rounded-lg py-2 text-[13px] transition-colors px-4 ${selected ? "font-medium text-[#156372]" : "text-slate-700 hover:bg-slate-50"}`}
-                                          >
-                                            <span>{label}</span>
-                                            {selected && <Check size={14} className="text-[#156372]" />}
-                                          </button>
-                                        );
-                                      })}
-                                    </>
-                                  )}
-
-                                  {filteredExpenseCompoundTaxes.length > 0 && (
-                                    <>
-                                      <div className="mt-1 px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-slate-700">
-                                        Compound tax
-                                      </div>
-                                      {filteredExpenseCompoundTaxes.map((tax: any) => {
-                                        const taxId = getTaxId(tax);
-                                        const label = taxLabel(tax);
-                                        const selected = String(formData.tax || "") === taxId;
-                                        return (
-                                          <button
-                                            key={taxId}
-                                            type="button"
-                                            onClick={() => {
-                                              setFormData((prev) => ({ ...prev, tax: taxId }));
-                                              setTaxAmountOverride("");
-                                              setTaxAmountEditOpen(false);
-                                              setTaxAmountEditValue("");
-                                              setExpenseTaxDropdownOpen(false);
-                                              setExpenseTaxSearch("");
-                                            }}
-                                            className={`flex w-full items-center justify-between rounded-lg py-2 text-[13px] transition-colors px-4 ${selected ? "font-medium text-[#156372]" : "text-slate-700 hover:bg-slate-50"}`}
-                                          >
-                                            <span>{label}</span>
-                                            {selected && <Check size={14} className="text-[#156372]" />}
-                                          </button>
-                                        );
-                                      })}
-                                    </>
-                                  )}
-
-                                  {filteredExpenseTaxGroups.length > 0 && (
-                                    <>
-                                      <div className="mt-1 px-4 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-slate-700">
-                                        Tax Group
-                                      </div>
-                                      {filteredExpenseTaxGroups.map((tax: any) => {
-                                        const taxId = getTaxId(tax);
-                                        const label = taxLabel(tax);
-                                        const selected = String(formData.tax || "") === taxId;
-                                        return (
-                                          <button
-                                            key={taxId}
-                                            type="button"
-                                            onClick={() => {
-                                              setFormData((prev) => ({ ...prev, tax: taxId }));
-                                              setTaxAmountOverride("");
-                                              setTaxAmountEditOpen(false);
-                                              setTaxAmountEditValue("");
-                                              setExpenseTaxDropdownOpen(false);
-                                              setExpenseTaxSearch("");
-                                            }}
-                                            className={`flex w-full items-center justify-between rounded-lg py-2 text-[13px] transition-colors px-4 ${selected ? "font-medium text-[#156372]" : "text-slate-700 hover:bg-slate-50"}`}
-                                          >
-                                            <span>{label}</span>
-                                            {selected && <Check size={14} className="text-[#156372]" />}
-                                          </button>
-                                        );
-                                      })}
-                                    </>
-                                  )}
-                                </>
+                                allVendors
+                                  .filter((v) => (v.displayName || v.name || "").toLowerCase().includes(vendorSearch.toLowerCase()))
+                                  .map((v, index) => {
+                                    const displayName = v.displayName || v.name || "";
+                                    const selected = formData.vendor_id === (v._id || v.id);
+                                    return (
+                                      <button
+                                        key={v._id || v.id || `${displayName}-${index}`}
+                                        type="button"
+                                        onClick={() => {
+                                          setFormData((prev) => ({
+                                            ...prev,
+                                            vendorName: displayName,
+                                            vendor_id: v._id || v.id || "",
+                                          }));
+                                          setVendorOpen(false);
+                                        }}
+                                        className={`w-full rounded-md px-3 py-2 text-left flex items-center justify-between transition-colors ${selected ? "text-[#156372] font-semibold" : "text-gray-900 hover:bg-[#f3f4f6]"}`}
+                                      >
+                                        <div className="flex items-center gap-3">
+                                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${selected ? "bg-[#156372] text-white" : "bg-gray-200 text-gray-700"}`}>
+                                            {String(displayName || "V").charAt(0).toUpperCase()}
+                                          </div>
+                                          <div className="text-sm font-medium truncate">{displayName}</div>
+                                        </div>
+                                        {selected && <Check size={14} className="text-[#156372]" />}
+                                      </button>
+                                    );
+                                  })
                               )}
                             </div>
                             <button
                               type="button"
+                              className="w-full border-t border-gray-200 px-3 py-2 text-left text-sm text-[#156372] hover:bg-[#f3f4f6] flex items-center gap-2"
                               onClick={() => {
-                                openNewTaxQuickAction({ type: "expense" });
+                                setVendorOpen(false);
+                                setNewVendorModalOpen(true);
                               }}
-                              className="w-full flex items-center gap-2 border-t border-slate-100 px-4 py-2.5 text-[13px] font-medium transition-colors hover:bg-slate-50"
-                              style={{ color: "#156372" }}
                             >
-                              <PlusCircle size={14} />
-                              New Tax
+                              <Plus size={14} />
+                              New Vendor
                             </button>
                           </div>
                         )}
                       </div>
-                      {formData.tax && (
-                        <div className="mt-1 text-sm text-gray-500 relative">
-                          <span>Tax Amount = {taxAmountDisplay} {formData.currency || baseCurrencyCode || "USD"}</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTaxAmountEditValue(taxAmountDisplay);
-                              setTaxAmountEditOpen((prev) => !prev);
-                            }}
-                            className="ml-2 text-[#3b82f6] inline-flex items-center"
-                          >
-                            <Edit3 size={13} />
-                          </button>
-                          {taxAmountEditOpen && (
-                            <div className="absolute left-0 top-full mt-2 w-[360px] max-w-[92vw] bg-white border border-gray-300 rounded-md shadow-lg z-50">
-                              <div className="flex items-center justify-between px-2.5 py-2 border-b border-gray-200">
-                                <span className="text-[18px] leading-none text-gray-300">*</span>
-                                <span className="text-base font-medium text-gray-800">
-                                  Update Taxes Amount ( in {formData.currency || baseCurrencyCode || "USD"} )
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => setTaxAmountEditOpen(false)}
-                                  className="w-7 h-7 rounded border border-[#3b82f6] text-red-500 flex items-center justify-center"
-                                >
-                                  <X size={14} />
-                                </button>
-                              </div>
-                              <div className="px-2.5 py-2.5">
-                                <div className="flex items-center justify-between gap-3">
-                                  <div className="text-[13px] text-gray-700">
-                                    {taxLabel(selectedExpenseTax || { name: "", rate: 0 })} <span className="text-xs text-gray-500">(Compound tax)</span>
-                                  </div>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={taxAmountEditValue}
-                                    onChange={(e) => setTaxAmountEditValue(e.target.value)}
-                                    className="w-[140px] rounded-md border border-gray-300 px-2.5 py-1.5 text-right text-sm outline-none focus:border-[#156372] focus:ring-1 focus:ring-[#156372]"
-                                  />
-                                </div>
-                                <div className="mt-3">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const parsed = Number(taxAmountEditValue);
-                                      if (Number.isFinite(parsed) && parsed >= 0) {
-                                        setTaxAmountOverride(parsed.toFixed(2));
-                                      }
-                                      setTaxAmountEditOpen(false);
-                                    }}
-                                    className="px-3.5 py-1.5 rounded-md bg-[#16a34a] text-sm text-white hover:bg-[#15803d]"
-                                  >
-                                    Update
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      <button
+                        onClick={() => setVendorSearchCriteriaOpen(true)}
+                        className="h-[38px] px-3 bg-[#156372] text-white rounded-r-md rounded-l-none hover:bg-[#0D4A52] transition-colors"
+                      >
+                        <Search size={16} />
+                      </button>
                     </div>
                   </div>
 
@@ -4592,7 +4402,7 @@ export default function RecordExpense() {
 
                   {/* Notes */}
                   <div className="grid grid-cols-[180px_1fr] items-start gap-4">
-                    <label className="text-sm font-medium text-gray-700 mt-2">Notes</label>
+                    <label className="text-sm font-medium text-gray-700 mt-2">Description</label>
                     <div className="max-w-[460px]">
                       <textarea
                         name="notes"
@@ -4668,24 +4478,25 @@ export default function RecordExpense() {
                                           setCustomerProjects([]);
                                           setCustomerOpen(false);
                                         }}
-                                        className={`w-full rounded-md px-3 py-2 text-left ${selected
-                                          ? "bg-gray-50 text-gray-900"
-                                          : "text-gray-900 hover:bg-gray-50"
+                                        className={`w-full rounded-md px-3 py-2 text-left flex items-center justify-between transition-colors ${selected
+                                          ? "text-[#156372] font-semibold"
+                                          : "text-gray-900 hover:bg-[#f3f4f6]"
                                           }`}
                                       >
                                         <div className="flex items-center gap-3">
-                                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${selected ? "bg-gray-200 text-gray-700" : "bg-[#e2e8f0] text-gray-700"}`}>
+                                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${selected ? "bg-[#156372] text-white" : "bg-[#e2e8f0] text-gray-700"}`}>
                                             {String(displayName || "C").charAt(0).toUpperCase()}
                                           </div>
                                           <div className="min-w-0">
                                             <div className="text-sm font-medium truncate">
                                               {displayName}{customerNo ? ` | ${customerNo}` : ""}
                                             </div>
-                                            <div className="text-xs truncate text-gray-500">
+                                            <div className={`text-xs truncate ${selected ? "text-white/80" : "text-gray-500"}`}>
                                               {email || company}
                                             </div>
                                           </div>
                                         </div>
+                                        {selected && <Check size={14} className="text-[#156372]" />}
                                       </button>
                                     );
                                   })
@@ -4693,7 +4504,7 @@ export default function RecordExpense() {
                             </div>
                             <button
                               type="button"
-                              className="w-full border-t border-gray-200 px-3 py-2 text-left text-sm text-[#156372] hover:bg-[#156372] hover:text-white flex items-center gap-2"
+                              className="w-full border-t border-gray-200 px-3 py-2 text-left text-sm text-[#156372] hover:bg-[#f3f4f6] flex items-center gap-2"
                               onClick={() => {
                                 openNewCustomerQuickAction();
                               }}
@@ -4805,9 +4616,10 @@ export default function RecordExpense() {
                                       setProjectOpen(false);
                                       setProjectSearch("");
                                     }}
-                                    className={`w-full px-3 py-2 text-left text-sm ${selected ? "bg-[#156372] text-white" : "text-gray-700 hover:bg-[#156372] hover:text-white"}`}
+                                    className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${selected ? "text-[#156372] font-semibold" : "text-gray-700 hover:bg-[#f3f4f6]"}`}
                                   >
-                                    {project.name}
+                                    <span>{project.name}</span>
+                                    {selected && <Check size={14} className="text-[#156372]" />}
                                   </button>
                                 );
                               })}
@@ -4974,11 +4786,14 @@ export default function RecordExpense() {
                               setTopReportingTagOpenIndex(null);
                               setTopReportingTagMenuPosition(null);
                             }}
-                            className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
-                              String(activeTag?.value || "") === option ? "text-[#156372] font-medium" : "text-gray-900"
+                            className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${
+                              String(activeTag?.value || "") === option
+                                 ? "text-[#156372] font-semibold"
+                                 : "text-gray-900 hover:bg-[#f3f4f6]"
                             }`}
                           >
-                            {option}
+                            <span>{option}</span>
+                            {String(activeTag?.value || "") === option && <Check size={14} className="text-[#156372]" />}
                           </button>
                         ))}
                       </div>
@@ -4987,47 +4802,48 @@ export default function RecordExpense() {
                   );
                 })()}
               </div>
-            )) : activeTab === "mileage" ? (
-              <RecordMileage onClose={() => navigate("/expenses")} />
-            ) : (
+            )) : (
             <div className="p-4 max-w-full">
               <div style={{ backgroundColor: "white", borderRadius: "6px", overflow: "visible", border: "1px solid #e5e7eb" }}>
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ backgroundColor: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
-                        <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                        <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap", position: "sticky", top: "58px", backgroundColor: "#ffffff", zIndex: 5 }}>
                           DATE<span style={{ color: "#156372" }}>*</span>
                         </th>
-                        <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                          CATEGORY NAME<span style={{ color: "#156372" }}>*</span>
+                        <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap", position: "sticky", top: "58px", backgroundColor: "#ffffff", zIndex: 5 }}>
+                          EXPENSE ACCOUNT<span style={{ color: "#156372" }}>*</span>
                         </th>
-                        <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                        <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap", position: "sticky", top: "58px", backgroundColor: "#ffffff", zIndex: 5 }}>
+                          CURRENCY<span style={{ color: "#156372" }}>*</span>
+                        </th>
+                        <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap", position: "sticky", top: "58px", backgroundColor: "#ffffff", zIndex: 5 }}>
                           AMOUNT<span style={{ color: "#156372" }}>*</span>
                         </th>
-                        <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                          LOCATION
+                        <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap", position: "sticky", top: "58px", backgroundColor: "#ffffff", zIndex: 5 }}>
+                          PAID THROUGH<span style={{ color: "#156372" }}>*</span>
                         </th>
-                        <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                          TAX
+                        <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap", position: "sticky", top: "58px", backgroundColor: "#ffffff", zIndex: 5 }}>
+                          VENDOR
                         </th>
-                        <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                        <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap", position: "sticky", top: "58px", backgroundColor: "#ffffff", zIndex: 5 }}>
                           CUSTOMER NAME
                         </th>
-                        <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                        <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap", position: "sticky", top: "58px", backgroundColor: "#ffffff", zIndex: 5 }}>
                           PROJECTS
                         </th>
                         {bulkShowAdditionalInformation && (
                           <>
-                            <th style={{ padding: "10px", textAlign: "center", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                            <th style={{ padding: "10px", textAlign: "center", fontSize: "11px", fontWeight: "600", color: "#6b7280", textTransform: "uppercase", whiteSpace: "nowrap", position: "sticky", top: "58px", backgroundColor: "#ffffff", zIndex: 5 }}>
                               BILLABLE
                             </th>
-                            <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#dc2626", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                            <th style={{ padding: "10px", textAlign: "left", fontSize: "11px", fontWeight: "600", color: "#dc2626", textTransform: "uppercase", whiteSpace: "nowrap", position: "sticky", top: "58px", backgroundColor: "#ffffff", zIndex: 5 }}>
                               REPORTING TAGS
                             </th>
                           </>
                         )}
-                        <th style={{ padding: "10px 6px", textAlign: "center", width: "44px", minWidth: "44px", position: "sticky", right: 0, background: "#f9fafb", zIndex: 2 }}></th>
+                        <th style={{ padding: "10px 6px", textAlign: "center", width: "44px", minWidth: "44px", position: "sticky", right: 0, top: "58px", background: "#ffffff", zIndex: 10 }}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -5063,9 +4879,9 @@ export default function RecordExpense() {
                                 }}
                                 style={{
                                   width: "100%",
-                                  padding: "5px 10px",
-                                  fontSize: "13px",
-                                  border: "1px solid #d1d5db",
+                                  padding: "4px 8px",
+                                  fontSize: "12px",
+                                  border: "none",
                                   borderRadius: "6px",
                                   background: "white",
                                   outline: "none",
@@ -5079,7 +4895,7 @@ export default function RecordExpense() {
                                 {bulkCategoryOpenIndex === index ? <ChevronUp size={14} color="#6b7280" /> : <ChevronDown size={14} color="#6b7280" />}
                               </button>
                               {bulkCategoryOpenIndex === index && (
-                                <div style={{ position: "absolute", left: 0, right: 0, top: "calc(100% + 4px)", background: "white", border: "1px solid #d1d5db", borderRadius: "6px", boxShadow: "0 8px 20px rgba(0,0,0,0.08)", zIndex: 92 }}>
+                                <div style={{ position: "absolute", left: 0, right: 0, top: "calc(100% + 4px)", background: "white", border: "none", borderRadius: "6px", boxShadow: "0 8px 20px rgba(0,0,0,0.08)", zIndex: 92 }}>
                                   <div style={{ padding: "8px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: "8px" }}>
                                     <Search size={14} color="#9ca3af" />
                                     <input
@@ -5087,7 +4903,7 @@ export default function RecordExpense() {
                                       onChange={(e) => setBulkCategorySearch(e.target.value)}
                                       placeholder="Search"
                                       autoFocus
-                                      style={{ width: "100%", border: "1px solid #156372", borderRadius: "6px", padding: "6px 8px", fontSize: "13px", outline: "none" }}
+                                      style={{ width: "100%", border: "1px solid #156372", borderRadius: "6px", padding: "4px 8px", fontSize: "12px", outline: "none" }}
                                     />
                                   </div>
                                   <div style={{ maxHeight: "220px", overflowY: "auto", padding: "4px" }}>
@@ -5108,16 +4924,23 @@ export default function RecordExpense() {
                                             }}
                                             style={{
                                               width: "100%",
-                                              padding: "8px 10px",
+                                              padding: "6px 10px",
                                               border: "none",
                                               borderRadius: "6px",
                                               textAlign: "left",
-                                              background: selected ? "#156372" : "transparent",
-                                              color: selected ? "white" : "#374151",
+                                              background: "transparent",
+                                              color: selected ? "#156372" : "#374151",
+                                              fontWeight: selected ? "600" : "400",
+                                              fontSize: "12px",
                                               cursor: "pointer",
+                                              transition: "all 0.2s",
                                             }}
+                                            className="hover:bg-[#f3f4f6]"
                                           >
-                                            {acc}
+                                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                                              <span>{acc}</span>
+                                              {selected && <Check size={14} color="#156372" />}
+                                            </div>
                                           </button>
                                         );
                                       })}
@@ -5127,75 +4950,84 @@ export default function RecordExpense() {
                             </div>
                           </td>
 
+                          {/* CURRENCY */}
+                          <td style={{ padding: "6px 10px" }}>
+                            <div style={{ position: "relative", minWidth: "90px" }} data-bulk-dropdown="true">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (bulkCurrencyOpenIndex === index) {
+                                    setBulkCurrencyOpenIndex(null);
+                                    setBulkCurrencySearch("");
+                                  } else {
+                                    closeBulkDropdowns();
+                                    setBulkCurrencyOpenIndex(index);
+                                  }
+                                }}
+                                 style={{
+                                  width: "100%",
+                                  padding: "4px 8px",
+                                  fontSize: "12px",
+                                  border: "none",
+                                  borderRadius: "6px",
+                                  background: "white",
+                                  outline: "none",
+                                  color: "#1f2937",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                }}
+                              >
+                                <span>{expense.currency || selectedCurrencyCode}</span>
+                                {bulkCurrencyOpenIndex === index ? <ChevronUp size={14} color="#6b7280" /> : <ChevronDown size={14} color="#6b7280" />}
+                              </button>
+                              {bulkCurrencyOpenIndex === index && (
+                                <div style={{ position: "absolute", left: 0, top: "calc(100% + 4px)", width: "160px", background: "white", border: "none", borderRadius: "6px", boxShadow: "0 8px 20px rgba(0,0,0,0.08)", zIndex: 94 }}>
+                                  <div style={{ maxHeight: "220px", overflowY: "auto", padding: "4px" }}>
+                                    {currencyOptions.map((currency) => {
+                                      const selected = String(expense.currency || selectedCurrencyCode).toUpperCase() === String(currency.code).toUpperCase();
+                                      return (
+                                        <button
+                                          key={`${expense.id}-cc-${currency.code}`}
+                                          type="button"
+                                          onClick={() => {
+                                            const next = [...bulkExpenses];
+                                            next[index].currency = String(currency.code);
+                                            setBulkExpenses(next);
+                                            setBulkCurrencyOpenIndex(null);
+                                            setBulkCurrencySearch("");
+                                          }}
+                                          style={{
+                                            width: "100%",
+                                            padding: "6px 8px",
+                                            border: "none",
+                                            borderRadius: "6px",
+                                            textAlign: "left",
+                                            background: "transparent",
+                                            color: selected ? "#156372" : "#374151",
+                                            fontWeight: selected ? "600" : "400",
+                                            cursor: "pointer",
+                                            transition: "all 0.2s",
+                                          }}
+                                          className="hover:bg-[#f3f4f6]"
+                                        >
+                                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", overflow: "hidden" }}>
+                                            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginRight: "8px" }}>{currency.label}</span>
+                                            {selected && <Check size={14} color="#156372" style={{ flexShrink: 0 }} />}
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+
                           {/* AMOUNT */}
                           <td style={{ padding: "6px 10px" }}>
-                            <div style={{ display: "flex", border: "1px solid #d1d5db", borderRadius: "6px", overflow: "hidden", minWidth: "180px", backgroundColor: "#fff" }}>
-                              <div style={{ position: "relative", width: "68px", backgroundColor: "#f3f4f6", borderRight: "1px solid #d1d5db", flexShrink: 0 }} data-bulk-dropdown="true">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (bulkCurrencyOpenIndex === index) {
-                                      setBulkCurrencyOpenIndex(null);
-                                      setBulkCurrencySearch("");
-                                    } else {
-                                      closeBulkDropdowns();
-                                      setBulkCurrencyOpenIndex(index);
-                                    }
-                                  }}
-                                  style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    padding: "5px 20px 5px 8px",
-                                    fontSize: "13px",
-                                    border: "none",
-                                    backgroundColor: "transparent",
-                                    cursor: "pointer",
-                                    color: "#374151",
-                                    fontWeight: "500",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
-                                  }}
-                                >
-                                  <span>{selectedCurrencyCode}</span>
-                                </button>
-                                <ChevronDown size={14} style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "#6b7280" }} />
-                                {bulkCurrencyOpenIndex === index && (
-                                  <div style={{ position: "absolute", left: 0, top: "calc(100% + 4px)", width: "180px", background: "white", border: "1px solid #d1d5db", borderRadius: "6px", boxShadow: "0 8px 20px rgba(0,0,0,0.08)", zIndex: 94 }}>
-                                    <div style={{ maxHeight: "220px", overflowY: "auto", padding: "4px" }}>
-                                      {currencyOptions.map((currency) => {
-                                        const selected = String(selectedCurrencyCode).toUpperCase() === String(currency.code).toUpperCase();
-                                        return (
-                                          <button
-                                            key={`${expense.id}-cc-${currency.code}`}
-                                            type="button"
-                                            onClick={() => {
-                                              const next = [...bulkExpenses];
-                                              next[index].currency = String(currency.code);
-                                              setBulkExpenses(next);
-                                              setBulkCurrencyOpenIndex(null);
-                                              setBulkCurrencySearch("");
-                                            }}
-                                            style={{
-                                              width: "100%",
-                                              padding: "8px 10px",
-                                              border: "none",
-                                              borderRadius: "6px",
-                                              textAlign: "left",
-                                              background: selected ? "#156372" : "transparent",
-                                              color: selected ? "white" : "#374151",
-                                              cursor: "pointer",
-                                            }}
-                                          >
-                                            {currency.label}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
+                            <div style={{ display: "flex", border: "none", borderRadius: "6px", overflow: "hidden", minWidth: "120px", backgroundColor: "#fff" }}>
                               <input
                                 type="number"
                                 placeholder="0.00"
@@ -5205,9 +5037,9 @@ export default function RecordExpense() {
                                   newExpenses[index].amount = e.target.value;
                                   setBulkExpenses(newExpenses);
                                 }}
-                                style={{
-                                  padding: "5px 10px",
-                                  fontSize: "13px",
+                                  style={{
+                                  padding: "4px 8px",
+                                  fontSize: "12px",
                                   border: "none",
                                   flex: 1,
                                   outline: "none",
@@ -5219,165 +5051,179 @@ export default function RecordExpense() {
                             </div>
                           </td>
 
-                          {/* LOCATION */}
+                          {/* PAID THROUGH */}
                           <td style={{ padding: "6px 10px" }}>
                             <div style={{ position: "relative", minWidth: "140px" }} data-bulk-dropdown="true">
                               <button
                                 type="button"
-                                onClick={() => {
-                                  if (bulkLocationOpenIndex === index) {
-                                    setBulkLocationOpenIndex(null);
-                                    setBulkLocationSearch("");
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (bulkPaidThroughOpenIndex === index) {
+                                    setBulkPaidThroughOpenIndex(null);
+                                    setBulkPaidThroughSearch("");
                                   } else {
                                     closeBulkDropdowns();
-                                    setBulkLocationOpenIndex(index);
+                                    setBulkPaidThroughOpenIndex(index);
                                   }
                                 }}
                                 style={{
                                   width: "100%",
-                                  padding: "5px 10px",
-                                  fontSize: "13px",
-                                  border: "1px solid #d1d5db",
+                                  padding: "4px 8px",
+                                  fontSize: "12px",
+                                  border: "none",
                                   borderRadius: "6px",
                                   background: "white",
                                   outline: "none",
-                                  color: expense.location ? "#1f2937" : "#9ca3af",
+                                  color: expense.paidThrough ? "#1f2937" : "#9ca3af",
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "space-between",
                                 }}
                               >
-                                <span>{expense.location || "Select a location"}</span>
-                                {bulkLocationOpenIndex === index ? <ChevronUp size={14} color="#6b7280" /> : <ChevronDown size={14} color="#6b7280" />}
+                                <span>{expense.paidThrough || "Select Account"}</span>
+                                {bulkPaidThroughOpenIndex === index ? <ChevronUp size={14} color="#6b7280" /> : <ChevronDown size={14} color="#6b7280" />}
                               </button>
-                              {bulkLocationOpenIndex === index && (
-                                <div style={{ position: "absolute", left: 0, right: 0, top: "calc(100% + 4px)", background: "white", border: "1px solid #d1d5db", borderRadius: "6px", boxShadow: "0 8px 20px rgba(0,0,0,0.08)", zIndex: 80 }}>
+                              {bulkPaidThroughOpenIndex === index && (
+                                <div style={{ position: "absolute", left: 0, right: 0, top: "calc(100% + 4px)", background: "white", border: "none", borderRadius: "6px", boxShadow: "0 8px 20px rgba(0,0,0,0.08)", zIndex: 85 }}>
                                   <div style={{ padding: "8px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: "8px" }}>
                                     <Search size={14} color="#9ca3af" />
                                     <input
-                                      value={bulkLocationSearch}
-                                      onChange={(e) => setBulkLocationSearch(e.target.value)}
+                                      value={bulkPaidThroughSearch}
+                                      onChange={(e) => setBulkPaidThroughSearch(e.target.value)}
                                       placeholder="Search"
                                       autoFocus
-                                      style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: "6px", padding: "6px 8px", fontSize: "13px", outline: "none" }}
+                                      style={{ width: "100%", border: "1px solid #156372", borderRadius: "6px", padding: "4px 8px", fontSize: "12px", outline: "none" }}
                                     />
                                   </div>
                                   <div style={{ maxHeight: "220px", overflowY: "auto", padding: "4px" }}>
-                                    {locationOptions
-                                      .filter((loc) => loc.toLowerCase().includes(bulkLocationSearch.toLowerCase()))
-                                      .map((loc) => {
-                                        const selected = (expense.location || "") === loc;
+                                    {filteredPaidThroughAccounts.filter((acc: any) => acc.name.toLowerCase().includes(bulkPaidThroughSearch.toLowerCase())).length === 0 ? (
+                                      <div style={{ padding: "6px 8px", fontSize: "12px", color: "#6b7280" }}>No accounts found</div>
+                                    ) : (
+                                      filteredPaidThroughAccounts
+                                        .filter((acc: any) => acc.name.toLowerCase().includes(bulkPaidThroughSearch.toLowerCase()))
+                                        .map((acc: any) => {
+                                        const selected = String(expense.paidThrough || "") === acc.name;
                                         return (
                                           <button
-                                            key={`${expense.id}-loc-${loc}`}
+                                            key={`${expense.id}-pt-${acc.id}`}
                                             type="button"
                                             onClick={() => {
-                                              const newExpenses = [...bulkExpenses];
-                                              newExpenses[index].location = loc;
-                                              setBulkExpenses(newExpenses);
-                                              setBulkLocationOpenIndex(null);
-                                              setBulkLocationSearch("");
+                                              const next = [...bulkExpenses];
+                                              next[index].paidThrough = acc.name;
+                                              next[index].paidThrough_id = acc.id;
+                                              setBulkExpenses(next);
+                                              setBulkPaidThroughOpenIndex(null);
+                                              setBulkPaidThroughSearch("");
                                             }}
                                             style={{
                                               width: "100%",
-                                              padding: "8px 10px",
+                                              padding: "6px 10px",
                                               border: "none",
                                               borderRadius: "6px",
                                               textAlign: "left",
-                                                background: selected ? "#156372" : "transparent",
-                                                color: selected ? "white" : "#374151",
+                                              background: "transparent",
+                                              color: selected ? "#156372" : "#374151",
+                                              fontWeight: selected ? "600" : "400",
+                                              fontSize: "12px",
                                               cursor: "pointer",
-                                              display: "flex",
-                                              alignItems: "center",
-                                              justifyContent: "space-between",
+                                              transition: "all 0.2s",
                                             }}
+                                            className="hover:bg-[#f3f4f6]"
                                           >
-                                            <span>{loc}</span>
-                                            {selected && <Check size={14} />}
+                                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                                              <span>{acc.name}</span>
+                                              {selected && <Check size={14} color="#156372" />}
+                                            </div>
                                           </button>
                                         );
-                                      })}
+                                      }))}
                                   </div>
                                 </div>
                               )}
                             </div>
                           </td>
 
-                          {/* TAX */}
+                          {/* VENDOR */}
                           <td style={{ padding: "6px 10px" }}>
-                            <div style={{ minWidth: "135px", position: "relative" }} data-bulk-dropdown="true">
+                            <div style={{ position: "relative", minWidth: "140px" }} data-bulk-dropdown="true">
                               <button
                                 type="button"
-                                onClick={() => {
-                                  if (bulkTaxOpenIndex === index) {
-                                    setBulkTaxOpenIndex(null);
-                                    setBulkTaxSearch("");
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (bulkVendorOpenIndex === index) {
+                                    setBulkVendorOpenIndex(null);
+                                    setBulkVendorSearch("");
                                   } else {
                                     closeBulkDropdowns();
-                                    setBulkTaxOpenIndex(index);
+                                    setBulkVendorOpenIndex(index);
                                   }
                                 }}
                                 style={{
                                   width: "100%",
-                                  padding: "5px 10px",
-                                  fontSize: "13px",
-                                  border: "1px solid #d1d5db",
+                                  padding: "4px 8px",
+                                  fontSize: "12px",
+                                  border: "none",
                                   borderRadius: "6px",
                                   background: "white",
                                   outline: "none",
-                                  color: expense.tax ? "#1f2937" : "#9ca3af",
+                                  color: expense.vendorName ? "#1f2937" : "#9ca3af",
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "space-between",
                                 }}
                               >
-                                <span>
-                                  {expense.tax ? taxLabel((Array.isArray(taxes) ? taxes : []).find((t: any) => getTaxId(t) === String(expense.tax)) || { name: "", rate: 0 }) : "Select a Tax"}
-                                </span>
-                                {bulkTaxOpenIndex === index ? <ChevronUp size={14} color="#6b7280" /> : <ChevronDown size={14} color="#6b7280" />}
+                                <span>{expense.vendorName || "Select Vendor"}</span>
+                                {bulkVendorOpenIndex === index ? <ChevronUp size={14} color="#6b7280" /> : <ChevronDown size={14} color="#6b7280" />}
                               </button>
-                              {bulkTaxOpenIndex === index && (
-                                <div style={{ position: "absolute", left: 0, right: 0, top: "calc(100% + 4px)", background: "white", border: "1px solid #d1d5db", borderRadius: "6px", boxShadow: "0 8px 20px rgba(0,0,0,0.08)", zIndex: 85 }}>
+                              {bulkVendorOpenIndex === index && (
+                                <div style={{ position: "absolute", left: 0, right: 0, top: "calc(100% + 4px)", background: "white", border: "none", borderRadius: "6px", boxShadow: "0 8px 20px rgba(0,0,0,0.08)", zIndex: 85 }}>
                                   <div style={{ padding: "8px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: "8px" }}>
                                     <Search size={14} color="#9ca3af" />
                                     <input
-                                      value={bulkTaxSearch}
-                                      onChange={(e) => setBulkTaxSearch(e.target.value)}
+                                      value={bulkVendorSearch}
+                                      onChange={(e) => setBulkVendorSearch(e.target.value)}
                                       placeholder="Search"
                                       autoFocus
-                                        style={{ width: "100%", border: "1px solid #156372", borderRadius: "6px", padding: "6px 8px", fontSize: "13px", outline: "none" }}
+                                      style={{ width: "100%", border: "1px solid #156372", borderRadius: "6px", padding: "4px 8px", fontSize: "12px", outline: "none" }}
                                     />
                                   </div>
-                                  <div style={{ padding: "8px 10px", fontSize: "12px", fontWeight: 600, color: "#6b7280" }}>Compound tax</div>
                                   <div style={{ maxHeight: "220px", overflowY: "auto", padding: "4px" }}>
-                                    {(Array.isArray(taxes) ? taxes : [])
-                                      .filter((tax: any) => taxLabel(tax).toLowerCase().includes(bulkTaxSearch.toLowerCase()))
-                                      .map((tax: any) => {
-                                        const taxId = getTaxId(tax);
-                                        const selected = String(expense.tax || "") === taxId;
+                                    {allVendors
+                                      .filter((v: any) => (v.displayName || v.name || "").toLowerCase().includes(bulkVendorSearch.toLowerCase()))
+                                      .map((v: any) => {
+                                        const name = v.displayName || v.name || "";
+                                        const selected = String(expense.vendorName || "") === name;
                                         return (
                                           <button
-                                            key={`${expense.id}-tax-${taxId}`}
+                                            key={`${expense.id}-vendor-${v._id || v.id}`}
                                             type="button"
                                             onClick={() => {
-                                              const newExpenses = [...bulkExpenses];
-                                              newExpenses[index].tax = taxId;
-                                              setBulkExpenses(newExpenses);
-                                              setBulkTaxOpenIndex(null);
-                                              setBulkTaxSearch("");
+                                              const next = [...bulkExpenses];
+                                              next[index].vendorName = name;
+                                              next[index].vendor_id = v._id || v.id;
+                                              setBulkExpenses(next);
+                                              setBulkVendorOpenIndex(null);
+                                              setBulkVendorSearch("");
                                             }}
                                             style={{
                                               width: "100%",
-                                              padding: "8px 10px",
+                                              padding: "6px 10px",
                                               border: "none",
                                               borderRadius: "6px",
                                               textAlign: "left",
-                                              background: selected ? "#156372" : "transparent",
-                                              color: selected ? "white" : "#374151",
+                                              background: "transparent",
+                                              color: selected ? "#156372" : "#374151",
+                                              fontWeight: selected ? "600" : "400",
+                                              fontSize: "12px",
                                               cursor: "pointer",
+                                              transition: "all 0.2s",
                                             }}
+                                            className="hover:bg-[#f3f4f6]"
                                           >
-                                            {taxLabel(tax)}
+                                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                                              <span>{name}</span>
+                                              {selected && <Check size={14} color="#156372" />}
+                                            </div>
                                           </button>
                                         );
                                       })}
@@ -5385,29 +5231,16 @@ export default function RecordExpense() {
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setBulkTaxOpenIndex(null);
-                                      setBulkTaxSearch("");
-                                      openNewTaxQuickAction({ type: "expense" });
+                                      setBulkVendorOpenIndex(null);
+                                      setNewVendorModalOpen(true);
                                     }}
-                                    style={{ width: "100%", border: "none", borderTop: "1px solid #e5e7eb", background: "white", textAlign: "left", padding: "10px 12px", fontSize: "13px", color: "#156372", display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}
+                                    style={{ width: "100%", border: "none", borderTop: "1px solid #e5e7eb", background: "white", textAlign: "left", padding: "10px 12px", fontSize: "12px", color: "#156372", display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}
                                   >
                                     <Plus size={14} />
-                                    New Tax
+                                    New Vendor
                                   </button>
                                 </div>
                               )}
-                              <label style={{ marginTop: "4px", display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#6b7280" }}>
-                                <input
-                                  type="checkbox"
-                                  checked={!!expense.is_inclusive_tax}
-                                  onChange={(e) => {
-                                    const newExpenses = [...bulkExpenses];
-                                    newExpenses[index].is_inclusive_tax = e.target.checked;
-                                    setBulkExpenses(newExpenses);
-                                  }}
-                                />
-                                Tax Inclusive
-                              </label>
                             </div>
                           </td>
 
@@ -5427,9 +5260,9 @@ export default function RecordExpense() {
                                 }}
                                 style={{
                                   width: "100%",
-                                  padding: "5px 10px",
-                                  fontSize: "13px",
-                                  border: "1px solid #d1d5db",
+                                  padding: "4px 8px",
+                                  fontSize: "12px",
+                                  border: "none",
                                   borderRadius: "6px",
                                   background: "white",
                                   outline: "none",
@@ -5443,7 +5276,7 @@ export default function RecordExpense() {
                                 {bulkCustomerOpenIndex === index ? <ChevronUp size={14} color="#6b7280" /> : <ChevronDown size={14} color="#6b7280" />}
                               </button>
                               {bulkCustomerOpenIndex === index && (
-                                <div style={{ position: "absolute", left: 0, right: 0, bottom: "calc(100% + 4px)", background: "white", border: "1px solid #d1d5db", borderRadius: "6px", boxShadow: "0 8px 20px rgba(0,0,0,0.08)", zIndex: 90 }}>
+                                <div style={{ position: "absolute", left: 0, right: 0, bottom: "calc(100% + 4px)", background: "white", border: "none", borderRadius: "6px", boxShadow: "0 8px 20px rgba(0,0,0,0.08)", zIndex: 90 }}>
                                   <div style={{ padding: "8px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: "8px" }}>
                                     <Search size={14} color="#9ca3af" />
                                     <input
@@ -5451,7 +5284,7 @@ export default function RecordExpense() {
                                       onChange={(e) => setBulkCustomerSearch(e.target.value)}
                                       placeholder="Search"
                                       autoFocus
-                                      style={{ width: "100%", border: "1px solid #156372", borderRadius: "6px", padding: "6px 8px", fontSize: "13px", outline: "none" }}
+                                      style={{ width: "100%", border: "1px solid #156372", borderRadius: "6px", padding: "4px 8px", fontSize: "12px", outline: "none" }}
                                     />
                                   </div>
                                   <div style={{ maxHeight: "220px", overflowY: "auto", padding: "4px" }}>
@@ -5477,16 +5310,22 @@ export default function RecordExpense() {
                                             }}
                                               style={{
                                                 width: "100%",
-                                                padding: "8px 10px",
+                                                padding: "6px 8px",
                                                 border: "none",
                                                 borderRadius: "6px",
                                                 textAlign: "left",
-                                                background: selected ? "#f8fafc" : "transparent",
-                                                color: "#374151",
+                                                background: "transparent",
+                                                color: selected ? "#156372" : "#374151",
+                                                fontWeight: selected ? "600" : "400",
                                                 cursor: "pointer",
+                                                transition: "all 0.2s",
                                               }}
+                                              className="hover:bg-[#f3f4f6]"
                                             >
-                                              {name}
+                                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                                                <span>{name}</span>
+                                                {selected && <Check size={14} color="#156372" />}
+                                              </div>
                                             </button>
                                           );
                                       })}
@@ -5498,7 +5337,7 @@ export default function RecordExpense() {
                                       setBulkCustomerSearch("");
                                       openNewCustomerQuickAction();
                                     }}
-                                    style={{ width: "100%", border: "none", borderTop: "1px solid #e5e7eb", background: "white", textAlign: "left", padding: "10px 12px", fontSize: "13px", color: "#156372", display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}
+                                    style={{ width: "100%", border: "none", borderTop: "1px solid #e5e7eb", background: "white", textAlign: "left", padding: "10px 12px", fontSize: "12px", color: "#156372", display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}
                                   >
                                     <Plus size={14} />
                                     New Customer
@@ -5516,7 +5355,7 @@ export default function RecordExpense() {
                                 const selectedCustomerId = normalizeText(selectedCustomer?._id || selectedCustomer?.id);
                                 const selectedCustomerName = String(expense.customerName || "").toLowerCase();
                                 const rowProjects = normalizeProjectRecords(allProjects).filter((project: any) => {
-                                  if (!selectedCustomerId && !selectedCustomerName) return false;
+                                  if (!selectedCustomerId && !selectedCustomerName) return true;
                                   return (
                                     (selectedCustomerId && String(project.customerId || "") === selectedCustomerId) ||
                                     (selectedCustomerName && String(project.customerName || "").toLowerCase() === selectedCustomerName)
@@ -5541,9 +5380,9 @@ export default function RecordExpense() {
                                       }}
                                         style={{
                                           width: "100%",
-                                          padding: "5px 10px",
-                                          fontSize: "13px",
-                                        border: "1px solid #d1d5db",
+                                          padding: "4px 8px",
+                                          fontSize: "12px",
+                                        border: "none",
                                           borderRadius: "6px",
                                           background: "white",
                                           outline: "none",
@@ -5553,11 +5392,11 @@ export default function RecordExpense() {
                                         justifyContent: "space-between",
                                       }}
                                     >
-                                      <span>{expense.projects || (expense.customerName ? "Select a project" : "Select customer first")}</span>
+                                      <span>{expense.projects || "Select a project"}</span>
                                       {bulkProjectOpenIndex === index ? <ChevronUp size={14} color="#6b7280" /> : <ChevronDown size={14} color="#6b7280" />}
                                     </button>
                                     {bulkProjectOpenIndex === index && (
-                                      <div style={{ position: "absolute", left: 0, right: 0, top: "calc(100% + 4px)", background: "white", border: "1px solid #d1d5db", borderRadius: "6px", boxShadow: "0 8px 20px rgba(0,0,0,0.08)", zIndex: 95 }}>
+                                      <div style={{ position: "absolute", left: 0, right: 0, top: "calc(100% + 4px)", background: "white", border: "none", borderRadius: "6px", boxShadow: "0 8px 20px rgba(0,0,0,0.08)", zIndex: 95 }}>
                                         <div style={{ padding: "8px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: "8px" }}>
                                           <Search size={14} color="#9ca3af" />
                                           <input
@@ -5565,15 +5404,12 @@ export default function RecordExpense() {
                                             onChange={(e) => setBulkProjectSearch(e.target.value)}
                                             placeholder="Search"
                                             autoFocus
-                                            style={{ width: "100%", border: "1px solid #156372", borderRadius: "6px", padding: "6px 8px", fontSize: "13px", outline: "none" }}
+                                            style={{ width: "100%", border: "1px solid #156372", borderRadius: "6px", padding: "4px 8px", fontSize: "12px", outline: "none" }}
                                           />
                                         </div>
                                         <div style={{ maxHeight: "220px", overflowY: "auto", padding: "4px" }}>
-                                          {!expense.customerName && (
-                                            <div style={{ padding: "8px 10px", fontSize: "13px", color: "#6b7280" }}>Select customer first</div>
-                                          )}
-                                          {expense.customerName && filteredRowProjects.length === 0 && (
-                                            <div style={{ padding: "8px 10px", fontSize: "13px", color: "#6b7280" }}>No projects found</div>
+                                          {filteredRowProjects.length === 0 && (
+                                            <div style={{ padding: "6px 8px", fontSize: "12px", color: "#6b7280" }}>No projects found</div>
                                           )}
                                           {filteredRowProjects.map((project: any) => {
                                             const selected = String(expense.projects || "") === String(project.name || "");
@@ -5584,22 +5420,37 @@ export default function RecordExpense() {
                                                 onClick={() => {
                                                   const newExpenses = [...bulkExpenses];
                                                   newExpenses[index].projects = project.name;
+                                                  // Auto-fill customer if not already set
+                                                  if (!newExpenses[index].customerName && project.customerName) {
+                                                    newExpenses[index].customerName = project.customerName;
+                                                  }
                                                   setBulkExpenses(newExpenses);
                                                   setBulkProjectOpenIndex(null);
                                                   setBulkProjectSearch("");
                                                 }}
                                                 style={{
                                                   width: "100%",
-                                                  padding: "8px 10px",
+                                                  padding: "6px 8px",
                                                   border: "none",
                                                   borderRadius: "6px",
                                                   textAlign: "left",
-                                                  background: selected ? "#156372" : "transparent",
-                                                  color: selected ? "white" : "#374151",
+                                                  background: "transparent",
+                                                  color: selected ? "#156372" : "#374151",
+                                                  fontWeight: selected ? "600" : "400",
                                                   cursor: "pointer",
+                                                  transition: "all 0.2s",
                                                 }}
+                                                className="hover:bg-[#f3f4f6]"
                                               >
-                                                {project.name}
+                                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                                                  <div style={{ display: "flex", flexDirection: "column" }}>
+                                                    <span>{project.name}</span>
+                                                    {!expense.customerName && project.customerName && (
+                                                      <span style={{ fontSize: "10px", color: "#6b7280" }}>{project.customerName}</span>
+                                                    )}
+                                                  </div>
+                                                  {selected && <Check size={14} color="#156372" />}
+                                                </div>
                                               </button>
                                             );
                                           })}
@@ -5658,7 +5509,7 @@ export default function RecordExpense() {
                                         color: hasSelection ? "#065f46" : "#374151",
                                         borderRadius: "4px",
                                         padding: "5px 8px",
-                                        fontSize: "13px",
+                                        fontSize: "12px",
                                         cursor: "pointer",
                                         display: "inline-flex",
                                         alignItems: "center",
@@ -5715,7 +5566,7 @@ export default function RecordExpense() {
                 </div>
 
                 {/* Add More Expenses Button */}
-                <div style={{ padding: "16px 20px", borderTop: "1px solid #e5e7eb", backgroundColor: "#f9fafb" }}>
+                <div style={{ padding: "16px 20px", borderTop: "1px solid #e5e7eb", backgroundColor: "#ffffff" }}>
                   <button
                     type="button"
                     onClick={() => {
@@ -5874,8 +5725,7 @@ export default function RecordExpense() {
 
 
           {/* Bottom Action Buttons */}
-          {activeTab !== "mileage" && (
-            <div className="px-6 py-4 border-t border-gray-200 bg-white flex gap-3">
+            <div className="px-6 py-4 border-t border-gray-200 bg-white flex gap-3 sticky bottom-0 z-[100] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
               <button
                 type="button"
                 className="bg-[#156372] hover:bg-[#0D4A52] text-white px-6 py-2.5 rounded-md border border-[#156372] text-sm font-medium"
@@ -5903,7 +5753,6 @@ export default function RecordExpense() {
                 Cancel
               </button>
             </div>
-          )}
         </div >
 
         {/* New Currency Modal */}
@@ -6340,25 +6189,26 @@ export default function RecordExpense() {
                                 else targetCategory = "Expense";
 
                                 // Or better, just show active category if it exists in structure, else fallback
-                                let accountsToShow = [];
+                                let accountsToShow: string[] = [];
                                 let categoryTitle = targetCategory;
 
                                 // Try to find exact match in structure keys
                                 // structuredAccounts keys: "Cost of Goods Sold", "Expense", "Other Current Liability", "Fixed Asset", "Other Current Asset"
 
                                 // We will iterate and find best match or simply list all relevant
-                                if (structuredAccounts[targetCategory]) {
-                                  accountsToShow = structuredAccounts[targetCategory];
+                                const structuredAccountsTyped = structuredAccounts as Record<string, string[]>;
+                                if (structuredAccountsTyped[targetCategory]) {
+                                  accountsToShow = structuredAccountsTyped[targetCategory];
                                 } else {
                                   // Fallback: Show all? No, likely empty.
                                   // Show Fixed Asset if select key matches
-                                  if (type === 'Fixed Asset' && structuredAccounts['Fixed Asset']) {
-                                    accountsToShow = structuredAccounts['Fixed Asset'];
+                                  if (type === 'Fixed Asset' && structuredAccountsTyped['Fixed Asset']) {
+                                    accountsToShow = structuredAccountsTyped['Fixed Asset'];
                                     categoryTitle = "Fixed Asset";
                                   }
                                 }
 
-                                const filtered = accountsToShow.filter(a => a.toLowerCase().includes(parentAccountSearch.toLowerCase()));
+                                const filtered = accountsToShow.filter((a: string) => a.toLowerCase().includes(parentAccountSearch.toLowerCase()));
 
                                 if (filtered.length === 0) return <div style={{ padding: "12px", color: "#9ca3af", fontSize: "13px", textAlign: "center" }}>No accounts found</div>
 
@@ -6374,7 +6224,7 @@ export default function RecordExpense() {
                                     }}>
                                       {categoryTitle}
                                     </div>
-                                    {filtered.map(acc => (
+                                    {filtered.map((acc: string) => (
                                       <div
                                         key={acc}
                                         onClick={() => {
@@ -6490,7 +6340,7 @@ export default function RecordExpense() {
                       <div style={{ fontSize: "13px", lineHeight: "1.6", opacity: 0.9 }}>
                         {getAccountTypeInfo(newAccountData.accountType).description}
                         <ul style={{ paddingLeft: "20px", marginTop: "12px", margin: 0, listStyleType: "disc" }}>
-                          {getAccountTypeInfo(newAccountData.accountType).points.map((point, idx) => (
+                          {getAccountTypeInfo(newAccountData.accountType).points.map((point: string, idx: number) => (
                             <li key={idx} style={{ marginBottom: "4px" }}>{point}</li>
                           ))}
                         </ul>
@@ -6557,10 +6407,10 @@ export default function RecordExpense() {
             const vendorId = vendor._id || vendor.id;
             const displayName = vendor.displayName || vendor.companyName || vendor.name || "";
             if (displayName && vendorId) {
-              setFormData(prev => ({
+              setFormData((prev) => ({
                 ...prev,
-                vendor: displayName,
-                vendor_id: vendorId
+                vendorName: displayName,
+                vendor_id: vendorId,
               }));
             }
             // Reload vendors list from API
@@ -6850,7 +6700,7 @@ export default function RecordExpense() {
                               setVendorSearchCriteria(criteria);
                               setVendorSearchCriteriaOpen(false);
                             }}
-                            className="w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-[#156372] hover:text-white"
+                            className="w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-[#f3f4f6]"
                           >
                             {criteria}
                           </button>
@@ -6902,7 +6752,7 @@ export default function RecordExpense() {
                           onClick={() => {
                             setFormData(prev => ({
                               ...prev,
-                              vendor: vendor.displayName || vendor.name || "",
+                              vendorName: vendor.displayName || vendor.name || "",
                               vendor_id: vendor.id || vendor._id || ""
                             }));
                             setVendorSearchModalOpen(false);
@@ -7000,7 +6850,7 @@ export default function RecordExpense() {
                               setCustomerSearchCriteria(criteria);
                               setCustomerSearchCriteriaOpen(false);
                             }}
-                            className="w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-[#156372] hover:text-white"
+                            className="w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-[#f3f4f6]"
                           >
                             {criteria}
                           </button>

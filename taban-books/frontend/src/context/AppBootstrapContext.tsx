@@ -168,6 +168,14 @@ export function AppBootstrapProvider({ children }: { children: React.ReactNode }
   );
   const [loading, setLoading] = useState(Boolean(getToken()) && !initialBootstrapSnapshot);
   const BOOTSTRAP_LOADER_MIN_DURATION_MS = 700;
+  const shouldSkipBootstrapLoader = () => {
+    if (typeof window === "undefined") return false;
+    return window.sessionStorage.getItem("taban:skip-bootstrap-loader") === "1";
+  };
+  const clearSkipBootstrapLoader = () => {
+    if (typeof window === "undefined") return;
+    window.sessionStorage.removeItem("taban:skip-bootstrap-loader");
+  };
 
   const updateBootstrapCache = (
     nextBranding: BootstrapBranding,
@@ -211,7 +219,7 @@ export function AppBootstrapProvider({ children }: { children: React.ReactNode }
     const storedOrganization = getOrganization();
 
     // Show icon loader during startup/refresh flow.
-    const showBlockingLoader = reason === "initial" || reason === "session";
+    const showBlockingLoader = (reason === "initial" || reason === "session") && !shouldSkipBootstrapLoader();
     if (showBlockingLoader) {
       setLoading(true);
     }
@@ -281,6 +289,7 @@ export function AppBootstrapProvider({ children }: { children: React.ReactNode }
         console.error("Error refreshing bootstrap data:", error);
       }
     } finally {
+      clearSkipBootstrapLoader();
       if (showBlockingLoader) {
         await Promise.allSettled([primeCachePromise, minimumLoaderDelay]);
         setLoading(false);

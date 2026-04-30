@@ -2,8 +2,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, Check, ChevronDown, Download as DownloadIcon, HelpCircle, Info, Search, X } from "lucide-react";
-import { parseImportFile } from "../../utils/importFileParser";
-import { bankAccountsAPI, chartOfAccountsAPI, customersAPI, recurringExpensesAPI, vendorsAPI } from "../../../services/api";
+import { parseImportFile } from "../../../sales/utils/importFileParser";
+import { bankAccountsAPI, chartOfAccountsAPI, customersAPI, recurringExpensesAPI, vendorsAPI } from "../../../../services/api";
 
 const MAP_FIELDS = [
   "Profile Name",
@@ -362,7 +362,7 @@ export default function ImportRecurringExpenses() {
 
       const errorSummary = rowErrors.length ? `\n\nErrors:\n${rowErrors.slice(0, 8).join("\n")}${rowErrors.length > 8 ? "\n..." : ""}` : "";
       alert(`Import complete.\nCreated: ${createdCount}\nSkipped: ${skippedCount}\nFailed: ${failedCount}${errorSummary}`);
-      navigate("/expenses/recurring-expenses");
+      navigate("/purchases/expenses/recurring-expenses");
     } catch (error: any) {
       console.error("Recurring expense import failed:", error);
       alert(error?.message || "Import failed. Please try again.");
@@ -386,7 +386,7 @@ export default function ImportRecurringExpenses() {
             <div className="flex items-center gap-2"><span className={`flex h-5 w-5 items-center justify-center rounded-full ${currentStep === 3 ? "bg-[#3b82f6] text-white" : "bg-gray-200 text-gray-600"}`}>3</span><span className="text-sm">Preview</span></div>
           </div>
         </div>
-        <button onClick={() => navigate("/expenses/recurring-expenses")} className="p-2 bg-transparent border-none cursor-pointer"><X size={20} className="text-red-600" /></button>
+        <button onClick={() => navigate("/purchases/expenses/recurring-expenses")} className="p-2 bg-transparent border-none cursor-pointer text-gray-500 hover:text-gray-700"><X size={20} /></button>
       </div>
 
       <div className={`p-8 overflow-y-auto flex-1 ${currentStep === 1 ? "max-w-2xl" : "max-w-5xl"} mx-auto w-full`}>
@@ -450,7 +450,7 @@ export default function ImportRecurringExpenses() {
       <div className="px-8 py-4 border-t border-gray-200 flex items-center justify-between bg-white">
         <div>{currentStep > 1 && <button type="button" onClick={() => setCurrentStep((step) => Math.max(1, step - 1))} className="px-4 py-2 text-sm border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50">Previous</button>}</div>
         <div className="flex items-center gap-3">
-          <button type="button" onClick={() => navigate("/expenses/recurring-expenses")} className="px-4 py-2 text-sm border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50">Cancel</button>
+          <button type="button" onClick={() => navigate("/purchases/expenses/recurring-expenses")} className="px-4 py-2 border border-gray-300 bg-white text-gray-700 rounded-md hover:bg-gray-50 cursor-pointer">Cancel</button>
           {currentStep < 3 ? <button type="button" onClick={handleNext} disabled={!selectedFile} className={`px-4 py-2 text-sm rounded-md text-white border-none ${selectedFile ? "bg-[#156372] hover:bg-[#0f4f5b]" : "bg-gray-300 cursor-not-allowed"}`}>Next</button> : <button type="button" onClick={handleImport} disabled={isImporting || !isPreviewReady} className={`px-4 py-2 text-sm rounded-md text-white border-none ${isImporting || !isPreviewReady ? "bg-gray-300 cursor-not-allowed" : "bg-[#156372] hover:bg-[#0f4f5b]"}`}>{isImporting ? "Importing..." : "Import"}</button>}
         </div>
       </div>

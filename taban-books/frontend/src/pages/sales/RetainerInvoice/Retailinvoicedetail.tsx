@@ -5,7 +5,7 @@ import { jsPDF } from "jspdf";
 import { MoreHorizontal, MessageSquare, X, Edit, Mail, FileText, Banknote, ChevronDown, ChevronRight, Search, Star, Download, Printer, Trash2, ArrowUpDown, Upload, Settings, RefreshCw, RotateCcw, HelpCircle, Bold, Italic, Underline, Strikethrough, AlignLeft, AlignCenter, AlignRight, Link as LinkIcon, Image as ImageIcon, Copy, Ban, AlertTriangle } from "lucide-react";
 import { debitNotesAPI, pdfTemplatesAPI, profileAPI } from "../../../services/api";
 import TransactionPDFDocument from "../../../components/Transactions/TransactionPDFDocument";
-import { deleteRetainerInvoice, getCustomers, getRetainerInvoiceById, getRetainerInvoices, RetainerInvoice, updateRetainerInvoice, saveRetainerInvoice } from "../salesModel";
+import { deleteRetainerInvoice, getCustomers, getRetainerInvoiceById, getRetainerInvoices, RetainerInvoice, updateRetainerInvoice, saveRetainerInvoice, Invoice, getInvoiceById } from "../salesModel";
 import { useOrganizationBranding } from "../../../hooks/useOrganizationBranding";
 import { toast } from "react-hot-toast";
 import ApplyRetainersToInvoiceModal from "./ApplyRetainersToInvoiceModal";
@@ -154,6 +154,8 @@ const formatMoney = (value: number) =>
     maximumFractionDigits: 2,
   }).format(toFiniteNumber(value, 0));
 
+const roundMoney = (val: any) => Math.round((Number(val) || 0) * 100) / 100;
+
 const formatDate = (value: any) => {
   if (!value) return "-";
   const d = new Date(value);
@@ -183,11 +185,11 @@ const isDuplicateInvoiceNumberError = (error: any) => {
   return hasInvoiceNumberText && hasDuplicateText && (status === 0 || status === 400 || status === 409);
 };
 
-const mapRetainerListRow = (invoice: Invoice): RetainerListRow => {
+const mapRetainerListRow = (invoice: any): RetainerListRow => {
   const derived = deriveRetainerFinancialState(invoice);
   return {
     id: getInvoiceId(invoice),
-    invoiceNumber: String(invoice.invoiceNumber || "-"),
+    invoiceNumber: String(invoice.invoiceNumber || invoice.retainerInvoiceNumber || "-"),
     customerName: getCustomerDisplayName(invoice),
     date: formatDate((invoice as any).invoiceDate || (invoice as any).date || (invoice as any).createdAt),
     status: toStatusLabel(derived.status),
@@ -310,6 +312,10 @@ export default function Retailinvoicedetail() {
   const [deleteRetainerId, setDeleteRetainerId] = useState<string>("");
   const [attachments, setAttachments] = useState<RetainerAttachment[]>([]);
   const [comments, setComments] = useState<RetainerComment[]>([]);
+  const [isBold, setIsBold] = useState(false);
+  const [isItalic, setIsItalic] = useState(false);
+  const [isUnderline, setIsUnderline] = useState(false);
+  const [isStrikethrough, setIsStrikethrough] = useState(false);
   const [isSendEmailModalOpen, setIsSendEmailModalOpen] = useState(false);
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
@@ -710,10 +716,10 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
       id: index + 1,
       description: String(row.description || row.name || "-"),
       amount: toFiniteNumber(
-        row.total ??
+        (row.total ??
           row.amount ??
-          (toFiniteNumber(row.quantity, 0) * toFiniteNumber(row.rate ?? row.unitPrice, 0)) ??
-          row.unitPrice ??
+          (toFiniteNumber(row.quantity, 0) * toFiniteNumber(row.rate ?? row.unitPrice, 0))) ||
+          row.unitPrice ||
           row.rate,
         0
       ),
@@ -1221,7 +1227,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
           text: [key, value].filter(Boolean).join(": "),
         };
       })
-      .filter((row) => row.key || row.value || row.text);
+      .filter((row: any) => row.key || row.value || row.text);
   }, [associatedTags]);
 
   const escapeHtml = (value: any) =>
@@ -2356,7 +2362,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
                                   <td colSpan={7} className="px-3 py-3 text-slate-500 text-[12px]">No payment records found.</td>
                                 </tr>
                               ) : (
-                                paymentTableRows.map((row) => (
+                                paymentTableRows.map((row: any) => (
                                   <tr key={row.id} className="border-b border-[#eef2f7] last:border-b-0">
                                     <td className="px-3 py-2">{row.date}</td>
                                     <td className="px-3 py-2 text-[#2563eb]">{row.paymentNumber}</td>
@@ -2446,7 +2452,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
                   <TransactionPDFDocument
                     data={{
                       ...invoice,
-                      number: String(invoice.invoiceNumber || invoice.retainerInvoiceNumber || "-"),
+                      number: String((invoice as any).invoiceNumber || invoice.retainerInvoiceNumber || "-"),
                       date: (invoice as any).invoiceDate || (invoice as any).date || (invoice as any).createdAt,
                       customerName: getCustomerDisplayName(invoice),
                       billingAddress: (invoice as any).billingAddress || (typeof (invoice as any).customer === 'object' ? (invoice as any).customer?.billingAddress : ""),
@@ -2504,7 +2510,7 @@ Amount: ${currency}${formatMoney(amountValue)}</p>
                         <div className="text-[13px] text-[#64748b]">At Transaction Level</div>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {normalizedAssociatedTags.length > 0 ? (
-                            normalizedAssociatedTags.map((tag, index) => (
+                            normalizedAssociatedTags.map((tag: any, index: number) => (
                               <span
                                 key={`${tag.text}-${index}`}
                                 className="inline-flex items-center rounded-md border border-[#cbd5e1] bg-[#f8fafc] px-2 py-0.5 text-[13px] text-[#475569]"

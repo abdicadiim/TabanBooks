@@ -90,7 +90,12 @@ function AppContent() {
           <AppRoutes />
         </SettingsProvider>
         <Toaster
-          position="top-right"
+          position="top-center"
+          containerStyle={{
+            top: 24,
+            left: "50%",
+            transform: "translateX(-50%)",
+          }}
           toastOptions={{
             duration: 3000,
             style: {
@@ -115,7 +120,7 @@ function AppContent() {
           }}
         />
         <ToastContainer
-          position="top-right"
+          position="top-center"
           autoClose={3000}
           hideProgressBar={false}
           newestOnTop

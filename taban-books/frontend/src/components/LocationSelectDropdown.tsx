@@ -15,6 +15,7 @@ interface LocationSelectDropdownProps {
   onSelect: (location: LocationOption) => void;
   placeholder?: string;
   className?: string;
+  neutralSelection?: boolean;
 }
 
 export const LocationSelectDropdown: React.FC<LocationSelectDropdownProps> = ({
@@ -23,6 +24,7 @@ export const LocationSelectDropdown: React.FC<LocationSelectDropdownProps> = ({
   onSelect,
   placeholder = "Select a location",
   className = "",
+  neutralSelection = false,
 }) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -156,14 +158,22 @@ export const LocationSelectDropdown: React.FC<LocationSelectDropdownProps> = ({
                           setIsOpen(false);
                         }}
                         className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors ${
-                          isSelected ? "bg-[#f0fdfa] text-[#156372]" : "text-slate-700 hover:bg-slate-50"
+                          neutralSelection
+                            ? isSelected
+                              ? "bg-[#f1f3f6] text-slate-900"
+                              : "text-slate-700 hover:bg-[#f1f3f6]"
+                            : isSelected
+                              ? "bg-[#f0fdfa] text-[#156372]"
+                              : "text-slate-700 hover:bg-slate-50"
                         }`}
                       >
                         <span className="flex min-w-0 items-center gap-2">
                           {!isSelected ? <span className="text-slate-400">•</span> : null}
                           <span className="truncate font-medium">{option.label}</span>
                         </span>
-                        {isSelected && <Check size={15} className="shrink-0 text-[#156372]" />}
+                        {isSelected && (
+                          <Check size={15} className={`shrink-0 ${neutralSelection ? "text-slate-900" : "text-[#156372]"}`} />
+                        )}
                       </button>
                     );
                   })

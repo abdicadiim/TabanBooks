@@ -36,6 +36,7 @@ export const createEmptyManualJournalEntry = (
   accountId: "",
   description: "",
   contact: "",
+  location: "",
   type: "",
   tax: "",
   project: "",

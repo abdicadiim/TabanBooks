@@ -31,11 +31,26 @@ const STANDARD_ROLES = [
     isSystem: true,
   },
 ];
+const ROLES_CACHE_KEY = "settings-roles-page-cache";
+
 export default function RolesPage() {
   const navigate = useNavigate();
-  const [roles, setRoles] = useState([]);
+  const [roles, setRoles] = useState(() => {
+    if (typeof window === "undefined") {
+      return STANDARD_ROLES;
+    }
+
+    try {
+      const cachedRoles = window.sessionStorage.getItem(ROLES_CACHE_KEY);
+      return cachedRoles ? JSON.parse(cachedRoles) : STANDARD_ROLES;
+    } catch (error) {
+      console.error("Failed to read roles cache:", error);
+      return STANDARD_ROLES;
+    }
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [hasLoadedRoles, setHasLoadedRoles] = useState(roles.length > 0);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
@@ -47,7 +62,7 @@ export default function RolesPage() {
   // Fetch roles from backend
   const fetchRoles = useCallback(async (showLoading = true) => {
     try {
-      if (showLoading) {
+      if (showLoading && roles.length === 0) {
         setLoading(true);
       }
       setError(null);
@@ -72,11 +87,24 @@ export default function RolesPage() {
       console.error("Error fetching roles:", err);
       setError(err.message || "Failed to fetch roles");
     } finally {
+      setHasLoadedRoles(true);
       if (showLoading) {
         setLoading(false);
       }
     }
-  }, []);
+  }, [roles.length]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      window.sessionStorage.setItem(ROLES_CACHE_KEY, JSON.stringify(roles));
+    } catch (error) {
+      console.error("Failed to write roles cache:", error);
+    }
+  }, [roles]);
 
   // Fetch roles on component mount (only once)
   useEffect(() => {
@@ -263,14 +291,13 @@ export default function RolesPage() {
         </div>
       )}
 
-      {/* Loading State */}
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="animate-spin h-8 w-8 text-gray-400" />
-        </div>
-      ) : (
-        /* Table */
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* Table */}
+      <div className="relative bg-white rounded-lg overflow-hidden">
+          {loading && roles.length > 0 ? (
+            <div className="pointer-events-none absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-full border border-[#156372]/15 bg-white/95 px-3 py-1 text-xs font-medium text-[#156372] shadow-sm">
+              Refreshing roles...
+            </div>
+          ) : null}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -287,7 +314,7 @@ export default function RolesPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {roles.length === 0 ? (
+                {roles.length === 0 && hasLoadedRoles ? (
                   <tr>
                     <td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500">
                       No roles found. Create a new role to get started.
@@ -346,7 +373,6 @@ export default function RolesPage() {
             </table>
           </div>
         </div>
-      )}
 
       {/* Dropdown Menu Portal */}
       {openMenuId && roles.find((r) => (r._id || r.id) === openMenuId) && (

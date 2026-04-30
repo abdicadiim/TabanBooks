@@ -79,6 +79,9 @@ const normalizeJournalLine = (line: any, index: number) => {
     tax: line?.tax ?? line?.taxName ?? line?.tax_name ?? "",
     taxId: line?.taxId ?? line?.tax_id ?? line?.tax?._id ?? line?.tax?.id ?? "",
     taxName: line?.taxName ?? line?.tax_name ?? (typeof line?.tax === "string" ? line.tax : line?.tax?.name) ?? "",
+    location: line?.location ?? line?.locationName ?? line?.location_name ?? "",
+    locationId: line?.locationId ?? line?.location_id ?? "",
+    locationName: line?.locationName ?? line?.location_name ?? line?.location ?? "",
     project: line?.project ?? line?.projectId ?? line?.project_id ?? "",
     projectId: line?.projectId ?? line?.project_id ?? line?.project ?? "",
     projectName: line?.projectName ?? line?.project_name ?? "",
@@ -203,6 +206,7 @@ const buildJournalPayload = (journalData: any) => {
     projectName: line.project_name,
     reportingTags: line.reporting_tags,
     tags: line.tags,
+    location: line.location_name,
     locationId: line.location_id,
   }));
 
@@ -579,4 +583,3 @@ export default {
   getTransactionLocks, createTransactionLock, unlockTransaction, bulkUnlockTransactions,
   getBaseCurrency
 };
-

@@ -9,11 +9,11 @@ import {
   X,
   FileText,
 } from "lucide-react";
-import { recurringExpensesAPI, customersAPI, accountantAPI, taxesAPI, reportingTagsAPI, currenciesAPI, projectsAPI } from "../../../services/api";
+import { recurringExpensesAPI, customersAPI, accountantAPI, taxesAPI, reportingTagsAPI, currenciesAPI, projectsAPI, vendorsAPI, chartOfAccountsAPI, bankAccountsAPI } from "../../../../services/api";
 import { buildRecurringExpensePayload, CATEGORY_OPTIONS, CUSTOM_REPEAT_UNITS, REPEAT_EVERY_OPTIONS } from "../shared/recurringExpenseModel";
-import { useCurrency } from "../../../hooks/useCurrency";
+import { useCurrency } from "../../../../hooks/useCurrency";
 import { filterActiveRecords } from "../shared/activeFilters";
-import NewCurrencyModal from "../../settings/organization-settings/setup-configurations/currencies/NewCurrencyModal";
+import NewCurrencyModal from "../../../settings/organization-settings/setup-configurations/currencies/NewCurrencyModal";
 
 const safeReadLocalArray = (keys: string[]) => {
   if (typeof window === "undefined") return [];
@@ -166,6 +166,28 @@ const getProjectCustomerName = (project: any) =>
     ""
   ).trim();
 
+const extractRows = (response: any): any[] => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.results)) return response.results;
+  if (Array.isArray(response?.accounts)) return response.accounts;
+  if (Array.isArray(response?.bankaccounts)) return response.bankaccounts;
+  if (Array.isArray(response?.bankAccounts)) return response.bankAccounts;
+  return [];
+};
+
+const normalizePaidThroughAccount = (row: any) => ({
+  ...row,
+  _id: row?._id || row?.id || "",
+  id: row?.id || row?._id || "",
+  accountName: String(row?.accountName || row?.bankName || row?.name || "").trim(),
+  accountType: String(row?.accountType || row?.type || "bank").trim().toLowerCase(),
+  isActive:
+    row?.isActive !== false &&
+    row?.is_active !== false &&
+    String(row?.status || "").toLowerCase() !== "inactive",
+});
+
 export default function NewRecurringExpense() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -213,6 +235,10 @@ export default function NewRecurringExpense() {
   const [expenseAccountSearch, setExpenseAccountSearch] = useState("");
   const [customerOpen, setCustomerOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
+  const [paidThroughOpen, setPaidThroughOpen] = useState(false);
+  const [paidThroughSearch, setPaidThroughSearch] = useState("");
+  const [vendorOpen, setVendorOpen] = useState(false);
+  const [vendorSearch, setVendorSearch] = useState("");
   const [projectOpen, setProjectOpen] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
   const [repeatEveryOpen, setRepeatEveryOpen] = useState(false);
@@ -226,7 +252,9 @@ export default function NewRecurringExpense() {
 
   // Data from API
   const [allCustomers, setAllCustomers] = useState([]);
+  const [allVendors, setAllVendors] = useState<any[]>([]);
   const [allProjects, setAllProjects] = useState<any[]>([]);
+  const [allAccounts, setAllAccounts] = useState<any[]>([]);
   const [expenseCategoryOptions, setExpenseCategoryOptions] = useState<{ id: string; name: string }[]>(
     CATEGORY_OPTIONS.map((name) => ({ id: toLocalCategoryId(name), name }))
   );
@@ -241,6 +269,8 @@ export default function NewRecurringExpense() {
   // Refs
   const expenseAccountRef = useRef<HTMLDivElement>(null);
   const customerRef = useRef<HTMLDivElement>(null);
+  const paidThroughRef = useRef<HTMLDivElement>(null);
+  const vendorRef = useRef<HTMLDivElement>(null);
   const projectRef = useRef<HTMLDivElement>(null);
   const repeatEveryRef = useRef<HTMLDivElement>(null);
   const currencyRef = useRef<HTMLDivElement>(null);
@@ -275,11 +305,41 @@ export default function NewRecurringExpense() {
           setAllCustomers(customersList);
         }
 
+        // Load Vendors
+        const vendorsResponse = await vendorsAPI.getAll({ limit: 1000 });
+        if (vendorsResponse && vendorsResponse.success) {
+          const vendorsList = filterActiveRecords(vendorsResponse.data || []);
+          setAllVendors(vendorsList);
+        }
+
         // Load Accounts
         const accountsResponse = await accountantAPI.getAccounts();
         if (accountsResponse && accountsResponse.success) {
           const accounts = filterActiveRecords(accountsResponse.data || []);
           processAccounts(accounts);
+        }
+
+        // Load paid-through account sources from chart of accounts + bank accounts
+        try {
+          const [chartAccountsResponse, bankAccountsResponse] = await Promise.all([
+            chartOfAccountsAPI.getAccounts({ isActive: true, limit: 1000 }),
+            bankAccountsAPI.getAll({ limit: 1000 }),
+          ]);
+
+          const mergedPaidThroughAccounts = [...extractRows(chartAccountsResponse), ...extractRows(bankAccountsResponse)]
+            .map((row: any) => normalizePaidThroughAccount(row))
+            .filter((row: any) => row.accountName)
+            .filter((row: any, index: number, arr: any[]) => {
+              const key = String(row.id || row._id || row.accountName).toLowerCase();
+              return arr.findIndex((item: any) =>
+                String(item.id || item._id || item.accountName).toLowerCase() === key
+              ) === index;
+            });
+
+          setAllAccounts(mergedPaidThroughAccounts);
+        } catch (accountsError) {
+          console.error("Error loading paid through accounts:", accountsError);
+          setAllAccounts([]);
         }
 
         // Load Projects (local-storage backed)
@@ -574,6 +634,14 @@ export default function NewRecurringExpense() {
         setCustomerOpen(false);
         setCustomerSearch("");
       }
+      if (paidThroughRef.current && !paidThroughRef.current.contains(event.target as Node)) {
+        setPaidThroughOpen(false);
+        setPaidThroughSearch("");
+      }
+      if (vendorRef.current && !vendorRef.current.contains(event.target as Node)) {
+        setVendorOpen(false);
+        setVendorSearch("");
+      }
       if (projectRef.current && !projectRef.current.contains(event.target as Node)) {
         setProjectOpen(false);
         setProjectSearch("");
@@ -679,6 +747,58 @@ export default function NewRecurringExpense() {
   const filteredRepeatEveryOptions = REPEAT_EVERY_OPTIONS.filter((option) =>
     option.toLowerCase().includes(repeatEverySearch.toLowerCase())
   );
+  const filteredPaidThroughAccounts = (() => {
+    const paidThroughTypes = [
+      "bank",
+      "cash",
+      "mobile_wallet",
+      "credit_card",
+      "asset",
+      "other_current_asset",
+      "other_current_liability",
+      "equity",
+    ];
+    const rows = (allAccounts || [])
+      .filter((acc: any) => {
+        const statusActive = acc?.isActive !== false && acc?.is_active !== false && String(acc?.status || "").toLowerCase() !== "inactive";
+        const accountType = String(acc?.accountType || acc?.type || "").toLowerCase();
+        return statusActive && paidThroughTypes.includes(accountType);
+      })
+      .map((acc: any) => ({
+        id: String(acc?._id || acc?.id || ""),
+        name: String(acc?.accountName || acc?.name || "").trim(),
+      }))
+      .filter((acc: any) => acc.id && acc.name);
+
+    if (
+      formData.paidThrough &&
+      !rows.some((acc: any) => acc.name.toLowerCase() === String(formData.paidThrough || "").toLowerCase())
+    ) {
+      rows.unshift({
+        id: String(formData.paidThroughId || `paid-${String(formData.paidThrough).toLowerCase()}`),
+        name: String(formData.paidThrough),
+      });
+    }
+
+    return rows.filter((acc: any, index: number, arr: any[]) =>
+      arr.findIndex((item: any) => item.name.toLowerCase() === acc.name.toLowerCase()) === index
+    );
+  })();
+  const filteredVendors = (() => {
+    const rows = (allVendors || []).filter((vendor: any) =>
+      String(vendor?.displayName || vendor?.name || "").toLowerCase().includes(vendorSearch.toLowerCase())
+    );
+    if (
+      formData.vendor &&
+      !rows.some((vendor: any) => String(vendor?.displayName || vendor?.name || "").toLowerCase() === String(formData.vendor || "").toLowerCase())
+    ) {
+      rows.unshift({
+        _id: formData.vendor_id || "",
+        displayName: formData.vendor,
+      });
+    }
+    return rows;
+  })();
   const selectedCustomerName = String(formData.customerName || "").trim().toLowerCase();
   const selectedCustomerId = String(formData.customer_id || "").trim() || String(
     (allCustomers.find((c: any) => String(c.displayName || c.name || "").trim() === String(formData.customerName || "").trim()) as any)?._id
@@ -720,6 +840,7 @@ export default function NewRecurringExpense() {
     if (isSaving) return;
     if (!formData.expenseAccount) { toast.error("Please select an Expense Account"); return; }
     if (!formData.amount || parseFloat(formData.amount) <= 0) { toast.error("Please enter a valid Amount"); return; }
+    if (!formData.paidThrough) { toast.error("Please select Paid Through"); return; }
     if (!formData.startDate) { toast.error("Please select a Start Date"); return; }
 
     try {
@@ -730,40 +851,49 @@ export default function NewRecurringExpense() {
         reportingTagValues,
       });
 
-      if (!recurringExpenseData.account_id) {
-        toast.error("Please select an expense account from the dropdown");
-        return;
-      }
-
       const editId = editExpense?._id || editExpense?.id || editExpense?.recurring_expense_id;
       const response = isEditMode && editId
         ? await recurringExpensesAPI.update(editId, recurringExpenseData)
         : await recurringExpensesAPI.create(recurringExpenseData);
 
       if (response && (response.code === 0 || response.success)) {
+        const createdRecurringExpense =
+          (response as any).recurring_expense ||
+          (response as any).data ||
+          null;
         const recurringExpenseId =
-          (response as any).recurring_expense?._id
+          createdRecurringExpense?._id
           || (response as any).data?._id
           || editId;
-
-        if (!isEditMode && recurringExpenseId) {
-          try {
-            await recurringExpensesAPI.generateExpense(recurringExpenseId);
-          } catch (genError) {
-            console.error("Error generating initial expense:", genError);
-          }
-        }
 
         localStorage.removeItem("recurringExpenseDraft");
         window.dispatchEvent(new Event("recurringExpensesUpdated"));
         toast.success(isEditMode ? "Recurring expense updated successfully." : "Recurring expense created successfully.");
-        navigate("/expenses/recurring-expenses");
+        navigate("/purchases/expenses/recurring-expenses", {
+          state: createdRecurringExpense
+            ? { createdRecurringExpense }
+            : undefined,
+        });
+
+        if (!isEditMode && recurringExpenseId) {
+          void recurringExpensesAPI.generateExpense(recurringExpenseId)
+            .then(() => {
+              window.dispatchEvent(new Event("recurringExpensesUpdated"));
+            })
+            .catch((genError) => {
+              console.error("Error generating initial expense:", genError);
+            });
+        }
       } else {
         toast.error((response as any)?.message || `Failed to ${isEditMode ? "update" : "create"} recurring expense`);
       }
     } catch (error) {
       console.error("Error saving recurring expense:", error);
-      toast.error(`An error occurred while ${isEditMode ? "updating" : "creating"} the recurring expense.`);
+      const message =
+        (error as any)?.data?.message ||
+        (error as any)?.message ||
+        `An error occurred while ${isEditMode ? "updating" : "creating"} the recurring expense.`;
+      toast.error(message);
     } finally {
       setIsSaving(false);
     }
@@ -772,7 +902,7 @@ export default function NewRecurringExpense() {
 
 
   return (
-    <div className="min-h-screen w-full bg-white flex flex-col font-sans">
+    <div className="h-full min-h-0 w-full bg-white flex flex-col font-sans">
       {/* Header */}
       <div className="border-b border-gray-200 bg-white px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -780,14 +910,14 @@ export default function NewRecurringExpense() {
           <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 m-0">New Recurring Expense</h1>
         </div>
         <button
-          onClick={() => navigate("/expenses/recurring-expenses")}
+          onClick={() => navigate("/purchases/expenses/recurring-expenses")}
           className="p-1 text-gray-500 hover:text-gray-700 transition-all duration-200"
         >
           <X size={22} />
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto overflow-x-hidden bg-white">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-white">
         <div className="w-full bg-white p-0 rounded-none shadow-none border-none mb-0">
 
           <div className="bg-white px-4 py-3 space-y-3">
@@ -980,7 +1110,7 @@ export default function NewRecurringExpense() {
                   name="neverExpires"
                   checked={formData.neverExpires}
                   onChange={handleChange}
-                  className="h-4 w-4"
+                  className="h-4 w-4 accent-[#156372]"
                 />
                 <span className="text-sm text-gray-700">Never Expires</span>
               </label>
@@ -991,7 +1121,7 @@ export default function NewRecurringExpense() {
           {/* Expense Account */}
           <div className="grid grid-cols-1 md:grid-cols-[170px_minmax(0,420px)] gap-6 items-center group">
             <label className="text-sm font-semibold text-red-500 flex items-center">
-              Category Name
+              Expense Account
               <span className="text-red-500 ml-1 font-bold">*</span>
             </label>
             <div className="relative max-w-[420px] w-full" ref={expenseAccountRef}>
@@ -1048,7 +1178,7 @@ export default function NewRecurringExpense() {
                       );
                     })}
                     {getFilteredExpenseCategories().length === 0 && (
-                      <div className="px-3 py-5 text-sm text-gray-400 text-center">No categories found</div>
+                      <div className="px-3 py-5 text-sm text-gray-400 text-center">No accounts found</div>
                     )}
                   </div>
                 </div>
@@ -1141,7 +1271,7 @@ export default function NewRecurringExpense() {
                   type="radio"
                   checked={formData.is_inclusive_tax === true}
                   onChange={() => setFormData(prev => ({ ...prev, is_inclusive_tax: true }))}
-                  className="h-4 w-4"
+                  className="h-4 w-4 accent-[#156372]"
                 />
                 <span className="text-sm text-gray-700">Tax Inclusive</span>
               </label>
@@ -1150,7 +1280,7 @@ export default function NewRecurringExpense() {
                   type="radio"
                   checked={formData.is_inclusive_tax === false}
                   onChange={() => setFormData(prev => ({ ...prev, is_inclusive_tax: false }))}
-                  className="h-4 w-4"
+                  className="h-4 w-4 accent-[#156372]"
                 />
                 <span className="text-sm text-gray-700">Tax Exclusive</span>
               </label>
@@ -1244,9 +1374,158 @@ export default function NewRecurringExpense() {
             </div>
           </div>
 
+          {/* Paid Through */}
+          <div className="grid grid-cols-1 md:grid-cols-[170px_minmax(0,420px)] gap-6 items-center group">
+            <label className="text-sm font-medium text-red-500 flex items-center">
+              Paid Through
+              <span className="text-red-500 ml-1 font-bold">*</span>
+            </label>
+            <div className="relative max-w-[420px] w-full" ref={paidThroughRef}>
+              <button
+                type="button"
+                onClick={() => setPaidThroughOpen((prev) => !prev)}
+                className="w-full h-9 px-3 py-2 bg-white border border-gray-300 rounded-md flex items-center justify-between hover:border-gray-400 transition-all duration-200"
+              >
+                <span className={formData.paidThrough ? "text-gray-900 text-sm font-medium" : "text-gray-400 text-sm font-medium"}>
+                  {formData.paidThrough || "Select an account"}
+                </span>
+                <ChevronDown size={16} className={`text-gray-400 transition-transform ${paidThroughOpen ? "rotate-180" : ""}`} />
+              </button>
+              {paidThroughOpen && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-md shadow-lg z-[100] max-h-[320px] overflow-hidden flex flex-col">
+                  <div className="p-3 border-b border-gray-100 flex items-center gap-2 bg-gray-50 sticky top-0">
+                    <Search size={14} className="text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search accounts..."
+                      value={paidThroughSearch}
+                      onChange={(e) => setPaidThroughSearch(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      autoFocus
+                      className="w-full bg-transparent border-none outline-none text-sm font-medium placeholder-gray-400"
+                    />
+                  </div>
+                  <div className="p-1 overflow-y-auto custom-scrollbar">
+                    {filteredPaidThroughAccounts
+                      .filter((acc: any) => acc.name.toLowerCase().includes(paidThroughSearch.toLowerCase()))
+                      .map((acc: any) => {
+                        const selected = String(formData.paidThrough || "").toLowerCase() === acc.name.toLowerCase();
+                        return (
+                          <button
+                            key={acc.id}
+                            type="button"
+                            onClick={() => {
+                              setFormData((prev) => ({
+                                ...prev,
+                                paidThrough: acc.name,
+                                paidThroughId: acc.id,
+                              }));
+                              setPaidThroughOpen(false);
+                              setPaidThroughSearch("");
+                            }}
+                            className={`w-full px-4 py-2.5 rounded-lg text-sm text-left transition-all duration-200 flex items-center justify-between ${
+                              selected
+                                ? "bg-blue-50 text-blue-600 font-medium"
+                                : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                            }`}
+                          >
+                            {acc.name}
+                            {selected && <Check size={14} className="text-blue-600" />}
+                          </button>
+                        );
+                      })}
+                    {filteredPaidThroughAccounts.filter((acc: any) => acc.name.toLowerCase().includes(paidThroughSearch.toLowerCase())).length === 0 && (
+                      <div className="px-4 py-8 text-center text-sm text-gray-400 italic font-medium">No accounts found</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Vendor */}
+          <div className="grid grid-cols-1 md:grid-cols-[170px_minmax(0,420px)] gap-6 items-center group">
+            <label className="text-sm font-medium text-gray-700">Vendor</label>
+            <div className="max-w-[420px] w-full">
+              <div className="relative w-full flex items-center gap-2">
+                <div className="relative flex-1 flex items-stretch" ref={vendorRef}>
+                  <button
+                    type="button"
+                    onClick={() => setVendorOpen((prev) => !prev)}
+                    className="flex-1 h-9 px-3 py-2 bg-white border border-gray-300 border-r-0 rounded-l-md flex items-center justify-between hover:border-gray-400 transition-all duration-200 group/btn"
+                  >
+                    <span className={`text-sm font-medium ${formData.vendor ? "text-gray-900" : "text-gray-400"}`}>
+                      {formData.vendor || "Select vendor"}
+                    </span>
+                    <ChevronDown size={16} className={`text-gray-400 group-hover/btn:text-blue-500 transition-transform ${vendorOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVendorOpen(true)}
+                    className="w-9 h-9 bg-[#156372] hover:bg-[#0f4f5a] transition-colors flex items-center justify-center rounded-r-md text-white"
+                  >
+                    <Search size={16} />
+                  </button>
+
+                  {vendorOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-md shadow-lg z-[100] max-h-[350px] overflow-hidden flex flex-col animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="p-3 border-b border-gray-100 flex items-center gap-2 bg-gray-50 sticky top-0">
+                        <Search size={14} className="text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search vendors..."
+                          value={vendorSearch}
+                          onChange={(e) => setVendorSearch(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          autoFocus
+                          className="w-full bg-transparent border-none outline-none text-sm font-medium placeholder-gray-400"
+                        />
+                      </div>
+                      <div className="p-1 overflow-y-auto custom-scrollbar">
+                        {filteredVendors.map((vendor: any, index: number) => {
+                          const vendorName = String(vendor?.displayName || vendor?.name || "").trim();
+                          const vendorId = String(vendor?._id || vendor?.id || "");
+                          const selected =
+                            (vendorId && String(formData.vendor_id || "") === vendorId) ||
+                            String(formData.vendor || "").toLowerCase() === vendorName.toLowerCase();
+                          return (
+                            <button
+                              key={vendorId || `${vendorName}-${index}`}
+                              type="button"
+                              onClick={() => {
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  vendor: vendorName,
+                                  vendor_id: vendorId,
+                                }));
+                                setVendorOpen(false);
+                                setVendorSearch("");
+                              }}
+                              className={`w-full px-4 py-2.5 rounded-lg text-sm text-left transition-all duration-200 flex items-center justify-between ${
+                                selected
+                                  ? "bg-blue-50 text-blue-600 font-medium"
+                                  : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                              }`}
+                            >
+                              {vendorName}
+                              {selected && <Check size={14} className="text-blue-600" />}
+                            </button>
+                          );
+                        })}
+                        {filteredVendors.length === 0 && (
+                          <div className="px-4 py-8 text-center text-sm text-gray-400 italic font-medium">No vendors found</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Description */}
           <div className="grid grid-cols-1 md:grid-cols-[170px_minmax(0,420px)] gap-6 items-start group">
-            <label className="text-sm font-medium text-gray-700 pt-2">Notes</label>
+            <label className="text-sm font-medium text-gray-700 pt-2">Description</label>
             <div className="max-w-[420px] w-full relative">
               <textarea
                 name="description"
@@ -1281,7 +1560,7 @@ export default function NewRecurringExpense() {
                     </span>
                     <ChevronDown size={16} className={`text-gray-400 group-hover/btn:text-blue-500 transition-transform ${customerOpen ? 'rotate-180' : ''}`} />
                   </button>
-                  <div className="w-9 h-9 bg-[#22b573] flex items-center justify-center rounded-r-md text-white">
+                  <div className="w-9 h-9 bg-[#156372] flex items-center justify-center rounded-r-md text-white">
                     <Search size={16} />
                   </div>
 
@@ -1416,12 +1695,10 @@ export default function NewRecurringExpense() {
 
           <div className="pt-1 pb-1">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10">
-              {[0, 1].map((idx) => {
-                const tag = reportingTagsToRender[idx];
-                const fallbackLabel = idx === 0 ? "wsq" : "sc";
-                const tagId = tag?.tagId || `fallback-${idx}`;
-                const label = fallbackLabel;
-                const isMandatory = true;
+              {reportingTagsToRender.map((tag: any) => {
+                const tagId = tag?.tagId;
+                const label = String(tag?.tagName || "Reporting Tag");
+                const isMandatory = Boolean(tag?.isMandatory);
                 const options = Array.isArray(tag?.options) ? tag.options : [];
                 const selected = reportingTagValues[tagId] || "None";
                 return (
@@ -1449,24 +1726,26 @@ export default function NewRecurringExpense() {
 
           </div>
 
-          {/* Action Buttons */}
-          <div className="sticky bottom-0 flex items-center gap-3 bg-white px-4 py-3 z-20">
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className={`px-6 h-10 rounded-md text-sm font-semibold text-white transition-all duration-200 ${isSaving ? "bg-[#156372]/70 cursor-not-allowed" : "bg-[#156372] hover:bg-[#0f4f5a]"}`}
-            >
-              {isSaving ? "Saving..." : "Save"}
-            </button>
-            <button
-              onClick={() => navigate("/expenses/recurring-expenses")}
-              disabled={isSaving}
-              className="px-6 h-10 rounded-md text-sm font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
+        </div>
+      </div>
 
+      {/* Action Buttons */}
+      <div className="sticky bottom-0 shrink-0 border-t border-gray-200 bg-white px-4 py-3 z-20">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className={`px-6 h-10 rounded-md text-sm font-semibold text-white transition-all duration-200 ${isSaving ? "bg-[#156372]/70 cursor-not-allowed" : "bg-[#156372] hover:bg-[#0f4f5a]"}`}
+          >
+            {isSaving ? "Saving..." : "Save"}
+          </button>
+          <button
+            onClick={() => navigate("/purchases/expenses/recurring-expenses")}
+            disabled={isSaving}
+            className="px-6 h-10 rounded-md text-sm font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
         </div>
       </div>
 

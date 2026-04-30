@@ -350,8 +350,9 @@ export default function RecurringInvoiceDetail() {
 
   useEffect(() => {
     clearRecurringSelection();
+  }, [id]);
 
-    useEffect(() => {
+  useEffect(() => {
     const fetchTemplateAndProfile = async () => {
       try {
         const [templatesRes, profileRes] = await Promise.all([
@@ -378,84 +379,83 @@ export default function RecurringInvoiceDetail() {
   }, []);
 
   const fetchData = async () => {
-      try {
-        const recurringInvoiceData = await getRecurringInvoiceById(String(id));
-        if (recurringInvoiceData) {
-          setRecurringInvoice(recurringInvoiceData);
+    try {
+      const recurringInvoiceData = await getRecurringInvoiceById(String(id));
+      if (recurringInvoiceData) {
+        setRecurringInvoice(recurringInvoiceData);
 
-          // Load customer data
-          const custId = recurringInvoiceData.customerId ||
-            (typeof recurringInvoiceData.customer === 'object' ?
-              (recurringInvoiceData.customer?.id || recurringInvoiceData.customer?._id) :
-              recurringInvoiceData.customer);
+        // Load customer data
+        const custId = recurringInvoiceData.customerId ||
+          (typeof recurringInvoiceData.customer === 'object' ?
+            (recurringInvoiceData.customer?.id || recurringInvoiceData.customer?._id) :
+            recurringInvoiceData.customer);
 
-          if (custId) {
-            const customerData = await getCustomerById(String(custId));
-            setCustomer(customerData);
-          }
-
-          // Load child invoices (invoices created from this recurring invoice)
-          const allInvoices = await getInvoices();
-          const relatedInvoices = Array.isArray(allInvoices) ? (allInvoices as any[]).filter(inv =>
-            String(inv.recurringInvoiceId) === String(id) ||
-            String(inv.sourceRecurringInvoiceId) === String(id) ||
-            String(inv.recurringInvoiceProfile) === String((recurringInvoiceData as any)?.profileName)
-          ) : [];
-          setChildInvoices(relatedInvoices);
-        } else {
-          navigate("/sales/recurring-invoices");
+        if (custId) {
+          const customerData = await getCustomerById(String(custId));
+          setCustomer(customerData);
         }
 
-        const allRecurringInvoices = await getRecurringInvoices();
-        setRecurringInvoices(Array.isArray(allRecurringInvoices) ? allRecurringInvoices : []);
-      } catch (error) {
-        console.error("Error fetching data:", error);
+        // Load child invoices (invoices created from this recurring invoice)
+        const allInvoices = await getInvoices();
+        const relatedInvoices = Array.isArray(allInvoices) ? (allInvoices as any[]).filter(inv =>
+          String(inv.recurringInvoiceId) === String(id) ||
+          String(inv.sourceRecurringInvoiceId) === String(id) ||
+          String(inv.recurringInvoiceProfile) === String((recurringInvoiceData as any)?.profileName)
+        ) : [];
+        setChildInvoices(relatedInvoices);
+      } else {
+        navigate("/sales/recurring-invoices");
       }
-    };
 
+      const allRecurringInvoices = await getRecurringInvoices();
+      setRecurringInvoices(Array.isArray(allRecurringInvoices) ? allRecurringInvoices : []);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    }
+  };
+
+  const fetchOrg = async () => {
+    try {
+      const resp = await settingsAPI.getOrganizationProfile();
+      if (resp && resp.success && resp.data) {
+        setOrganizationProfile(resp.data);
+        if (resp.data.logo) setLogoPreview(resp.data.logo);
+        if (resp.data.address) {
+          setOrganizationData(prev => ({
+            ...prev,
+            name: resp.data.name || prev.name,
+            street1: resp.data.address.street1 || prev.street1,
+            street2: resp.data.address.street2 || prev.street2,
+            city: resp.data.address.city || prev.city,
+            stateProvince: resp.data.address.state || prev.stateProvince,
+            country: resp.data.address.country || prev.country,
+            zipCode: resp.data.address.zipCode || prev.zipCode,
+            phone: resp.data.phone || prev.phone,
+            email: resp.data.email || prev.email,
+            websiteUrl: resp.data.website || prev.websiteUrl
+          }));
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching organization profile:', err);
+    }
+  };
+
+  const fetchRecurringSettings = async () => {
+    try {
+      const resp = await settingsAPI.getRecurringInvoiceSettings();
+      if (resp && resp.success && resp.data) {
+        setRecurringInvoiceSettings(resp.data);
+      }
+    } catch (err) {
+      console.error('Error fetching recurring invoice settings:', err);
+    }
+  };
+
+  useEffect(() => {
     if (id) {
       fetchData();
     }
-
-    // Fetch organization profile for header
-    const fetchOrg = async () => {
-      try {
-        const resp = await settingsAPI.getOrganizationProfile();
-        if (resp && resp.success && resp.data) {
-          setOrganizationProfile(resp.data);
-          if (resp.data.logo) setLogoPreview(resp.data.logo);
-          if (resp.data.address) {
-            setOrganizationData(prev => ({
-              ...prev,
-              name: resp.data.name || prev.name,
-              street1: resp.data.address.street1 || prev.street1,
-              street2: resp.data.address.street2 || prev.street2,
-              city: resp.data.address.city || prev.city,
-              stateProvince: resp.data.address.state || prev.stateProvince,
-              country: resp.data.address.country || prev.country,
-              zipCode: resp.data.address.zipCode || prev.zipCode,
-              phone: resp.data.phone || prev.phone,
-              email: resp.data.email || prev.email,
-              websiteUrl: resp.data.website || prev.websiteUrl
-            }));
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching organization profile:', err);
-      }
-    };
-
-    const fetchRecurringSettings = async () => {
-      try {
-        const resp = await settingsAPI.getRecurringInvoiceSettings();
-        if (resp && resp.success && resp.data) {
-          setRecurringInvoiceSettings(resp.data);
-        }
-      } catch (err) {
-        console.error('Error fetching recurring invoice settings:', err);
-      }
-    };
-
     fetchOrg();
     fetchRecurringSettings();
   }, [id, navigate]);
@@ -1359,7 +1359,7 @@ export default function RecurringInvoiceDetail() {
               </div>
             </div>
           )}
-
+          {activeTab === "Next Invoice" && (
             <div className="p-6 bg-white flex justify-center">
               <div className="w-full max-w-4xl">
                 <TransactionPDFDocument

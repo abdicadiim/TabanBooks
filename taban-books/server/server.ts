@@ -143,6 +143,20 @@ connectDB(process.env.MONGO_URI || "mongodb://127.0.0.1:27017/Taban_Book")
 
     scheduleRemindersJob();
     scheduleRecurringInvoicesJob();
+    
+    try {
+      const { scheduleRecurringExpensesJob } = await import("./jobs/recurringExpenses.job.js");
+      scheduleRecurringExpensesJob();
+    } catch (jobError) {
+      console.error("Failed to start Recurring Expenses job:", jobError);
+    }
+
+    try {
+      const { scheduleRecurringBillsJob } = await import("./jobs/recurringBills.job.js");
+      scheduleRecurringBillsJob();
+    } catch (jobError) {
+      console.error("Failed to start Recurring Bills job:", jobError);
+    }
 
     // Start server - listen on all interfaces (0.0.0.0) to allow localhost connections
     app.listen(PORT, '0.0.0.0', () => {

@@ -27,6 +27,9 @@ const buildRecurringExpenseIdFilter = (id: string) => {
     return orConditions.length === 1 ? orConditions[0] : { $or: orConditions };
 };
 
+const normalizeText = (value: any): string => String(value ?? "").trim();
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /**
  * Create a Recurring Expense
  * POST /recurring-expenses
@@ -65,14 +68,17 @@ export const createRecurringExpense = async (req: AuthRequest, res: Response): P
 
         // Find or lookup account by ID or name
         let account;
-        if (account_id) {
+        if (account_id && _mongoose.Types.ObjectId.isValid(String(account_id))) {
             account = await ChartOfAccount.findOne({
                 _id: account_id,
                 organization: orgId
             });
-        } else if (account_name) {
+        }
+        if (!account && account_name) {
+            const normalizedAccountName = normalizeText(account_name);
+            const exactAccountNameRegex = new RegExp(`^${escapeRegex(normalizedAccountName)}$`, "i");
             account = await ChartOfAccount.findOne({
-                accountName: { $regex: new RegExp(`^${account_name}$`, "i") },
+                accountName: exactAccountNameRegex,
                 organization: orgId
             });
         }
@@ -87,28 +93,35 @@ export const createRecurringExpense = async (req: AuthRequest, res: Response): P
 
         // Find or lookup paid through account
         let paidThroughAccount;
-        if (paid_through_account_id) {
-            // First try to find in BankAccount (if separated) or fallback to logic if they are in same collection or handled same way
-            // Assuming paid_through_account is also a ChartOfAccount or BankAccount. 
-            // Based on Expense controller, it seems to look up similar to regular account but usually is Bank/Cash/etc.
-            // Let's assume ChartOfAccount for simplicity if BankAccount is just a type of Account, or check both.
-            // But the previous code imported BankAccount model. Let's start with ChartOfAccount as generic.
+        if (paid_through_account_id && _mongoose.Types.ObjectId.isValid(String(paid_through_account_id))) {
             paidThroughAccount = await ChartOfAccount.findOne({
                 _id: paid_through_account_id,
                 organization: orgId
             });
             if (!paidThroughAccount) {
-                // Try BankAccount model if exists and distinct
                 paidThroughAccount = await BankAccount.findOne({
                     _id: paid_through_account_id,
                     organization: orgId
                 });
             }
-        } else if (paid_through_account_name) {
+        }
+        if (!paidThroughAccount && paid_through_account_name) {
+            const normalizedPaidThroughName = normalizeText(paid_through_account_name);
+            const exactPaidThroughNameRegex = new RegExp(`^${escapeRegex(normalizedPaidThroughName)}$`, "i");
             paidThroughAccount = await ChartOfAccount.findOne({
-                accountName: { $regex: new RegExp(`^${paid_through_account_name}$`, "i") },
+                accountName: exactPaidThroughNameRegex,
                 organization: orgId
             });
+            if (!paidThroughAccount) {
+                paidThroughAccount = await BankAccount.findOne({
+                    $or: [
+                        { accountName: exactPaidThroughNameRegex },
+                        { bankName: exactPaidThroughNameRegex },
+                        { name: exactPaidThroughNameRegex },
+                    ],
+                    organization: orgId
+                });
+            }
         }
 
         if (!paidThroughAccount) {
@@ -398,11 +411,25 @@ export const generateExpenseFromRecurring = async (req: AuthRequest, res: Respon
             is_billable: recurringExpense.is_billable,
             is_personal: recurringExpense.is_personal,
             recurring_expense_id: recurringExpense._id,
-            status: recurringExpense.is_billable ? 'billable' : 'non-billable'
+            status: recurringExpense.is_billable ? 'unbilled' : 'non-billable',
+            is_itemized_expense: (recurringExpense as any).is_itemized_expense,
+            line_items: (recurringExpense as any).line_items
         };
 
         const newExpense = new Expense(expenseData);
         await newExpense.save();
+
+        // Create Journal Entry
+        try {
+            const { createJournalEntryForExpense } = await import("../utils/expenseAccounting.js");
+            const journalEntry = await createJournalEntryForExpense(newExpense, req.user.organizationId);
+
+            // Link Journal Entry to Expense
+            newExpense.journalEntryId = journalEntry._id as any;
+            await newExpense.save();
+        } catch (jeError) {
+            console.error("Failed to create journal entry for generated expense:", jeError);
+        }
 
         // Update recurring expense dates
         recurringExpense.last_created_date = new Date();

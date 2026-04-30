@@ -277,11 +277,11 @@ function SearchableMultiSelect({
                     type="button"
                     onClick={() => toggleValue(option)}
                     className={`w-full px-3 py-2.5 flex items-center justify-between gap-3 text-left text-sm ${
-                      isSelected ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-50"
+                      isSelected ? "bg-[#f1f3f6] text-gray-900" : "text-gray-700 hover:bg-[#f1f3f6]"
                     }`}
                   >
                     <span className="truncate">{option}</span>
-                    {isSelected && <Check size={16} className="text-blue-600 flex-shrink-0" />}
+                    {isSelected && <Check size={16} className="text-gray-900 flex-shrink-0" />}
                   </button>
                 );
               })

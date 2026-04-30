@@ -17,8 +17,8 @@ import {
   Plus,
   History,
 } from "lucide-react";
-import { expensesAPI, chartOfAccountsAPI, currenciesAPI, taxesAPI, customersAPI } from "../../../services/api";
-import { useCurrency } from "../../../hooks/useCurrency";
+import { expensesAPI, chartOfAccountsAPI, currenciesAPI, taxesAPI, customersAPI } from "../../../../services/api";
+import { useCurrency } from "../../../../hooks/useCurrency";
 import ExpenseCommentsPanel from "./ExpenseCommentsPanel";
 
 const EXPENSES_KEY = "expenses_v1";
@@ -681,10 +681,10 @@ export default function ExpenseDetail() {
         comments: Array.isArray(src?.comments) ? src.comments : (Array.isArray(expense?.comments) ? expense.comments : []),
       };
 
-      navigate("/expenses/new", { state: { editExpense, isEdit: true } });
+      navigate("/purchases/expenses/new", { state: { editExpense, isEdit: true } });
     } catch (error) {
       console.error("Failed to load full expense for edit:", error);
-      navigate("/expenses/new", { state: { editExpense: expense, isEdit: true } });
+      navigate("/purchases/expenses/new", { state: { editExpense: expense, isEdit: true } });
     }
   };
 
@@ -846,7 +846,7 @@ export default function ExpenseDetail() {
         localStorage.setItem(EXPENSES_KEY, JSON.stringify(updatedExpenses));
         window.dispatchEvent(new Event("expensesUpdated"));
         window.dispatchEvent(new Event("storage"));
-        navigate("/expenses");
+        navigate("/purchases/expenses");
       } catch (error: any) {
         console.error("Failed to delete expense:", error);
         toast.error(error?.message || "Failed to delete expense.");
@@ -1071,7 +1071,7 @@ export default function ExpenseDetail() {
       <div style={{ padding: "24px", minHeight: "100vh", backgroundColor: "#ffffff", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
         <p style={{ fontSize: "16px", color: "#6b7280", marginBottom: "16px" }}>Expense not found</p>
         <button
-          onClick={() => navigate("/expenses")}
+          onClick={() => navigate("/purchases/expenses")}
           style={{
             padding: "8px 16px",
             fontSize: "14px",
@@ -1161,7 +1161,7 @@ export default function ExpenseDetail() {
           <div className="flex items-center gap-2">
             <button
               className="flex h-8 w-8 items-center justify-center rounded-md border border-[#23b26b] bg-[#23b26b] text-white"
-              onClick={() => navigate("/expenses/new")}
+              onClick={() => navigate("/purchases/expenses/new")}
             >
               <Plus size={16} />
             </button>
@@ -1219,7 +1219,7 @@ export default function ExpenseDetail() {
               <button className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-[#f5f6fa] text-gray-700" onClick={handleChat}>
                 <MessageCircle size={18} />
               </button>
-              <button className="text-red-500" onClick={() => navigate("/expenses")}>
+              <button className="text-red-500" onClick={() => navigate("/purchases/expenses")}>
                 <X size={20} />
               </button>
             </div>

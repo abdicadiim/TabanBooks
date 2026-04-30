@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { vendorsAPI } from "../../../services/api";
+import { vendorsAPI } from "../../../../services/api";
 
 type VendorRecord = {
   id?: string;

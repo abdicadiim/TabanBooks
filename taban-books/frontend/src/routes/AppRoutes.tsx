@@ -14,6 +14,106 @@ const LoadingPage = lazy(() => import("../auth/LoadingPage"));
 const VerifyIdentity = lazy(() => import("../auth/VerifyIdentity"));
 const AcceptInvitation = lazy(() => import("../auth/AcceptInvitation"));
 
+// Settings & Layout
+const SettingsLayout = lazy(() => import("../pages/settings/SettingsLayout"));
+const AllSettings = lazy(() => import("../pages/settings/AllSettings"));
+
+// Organization Settings
+const SettingsProfilePage = lazy(() => import("../pages/settings/organization-settings/organization/profile/ProfilePage"));
+const SettingsBrandingPage = lazy(() => import("../pages/settings/organization-settings/organization/branding/BrandingPage"));
+const SettingsCustomDomainPage = lazy(() => import("../pages/settings/organization-settings/organization/custom-domain/CustomDomainPage"));
+const SettingsSubscriptionPage = lazy(() => import("../pages/settings/organization-settings/organization/subscription/SubscriptionPage"));
+const SettingsLocationsWrapper = lazy(() => import("../pages/settings/SettingsLocationsWrapper"));
+
+// Users & Roles
+const SettingsUsersPage = lazy(() => import("../pages/settings/organization-settings/users-roles/users/UsersPage"));
+const SettingsRolesPage = lazy(() => import("../pages/settings/organization-settings/users-roles/roles/RolesPage"));
+const SettingsNewRolePage = lazy(() => import("../pages/settings/organization-settings/users-roles/roles/new/NewRolePage"));
+const SettingsUserPreferencesPage = lazy(() => import("../pages/settings/organization-settings/users-roles/user-preferences/UserPreferencesPage"));
+const NewCustomFieldPage = lazy(() => import("../pages/settings/NewCustomFieldPage"));
+
+// Taxes & Compliance
+const SettingsTaxesPage = lazy(() => import("../pages/settings/organization-settings/taxes-compliance/TAX/TaxesPage"));
+const SettingsVATPage = lazy(() => import("../pages/settings/VATPage"));
+
+// Setup & Configurations
+const SettingsGeneralPage = lazy(() => import("../pages/settings/organization-settings/setup-configurations/general/GeneralSettingsPage"));
+const SettingsCurrenciesRouter = lazy(() => import("../pages/settings/organization-settings/setup-configurations/currencies/CurrenciesRouter"));
+const SettingsOpeningBalancesRouter = lazy(() => import("../pages/settings/organization-settings/setup-configurations/opening-balances/OpeningBalancesRouter"));
+const SettingsRemindersPage = lazy(() => import("../pages/settings/organization-settings/setup-configurations/reminders/RemindersPage"));
+
+// Customization
+const SettingsCustomerPortalPage = lazy(() => import("../pages/settings/CustomerPortalPage"));
+const SettingsVendorPortalPage = lazy(() => import("../pages/settings/VendorPortalPage"));
+const SettingsTransactionNumberSeriesPage = lazy(() => import("../pages/settings/TransactionNumberSeriesPage"));
+const SettingsTemplateEditorPage = lazy(() => import("../pages/settings/TemplateEditorPage"));
+const SettingsPDFTemplatesPage = lazy(() => import("../pages/settings/PDFTemplatesPage"));
+const SettingsNewServerPage = lazy(() => import("../pages/settings/NewServerPage"));
+const SettingsEmailNotificationsPage = lazy(() => import("../pages/settings/EmailNotificationsPage"));
+const SettingsNewReportingTagPage = lazy(() => import("../pages/settings/organization-settings/customization/reporting-tags/NewReportingTagPage"));
+const SettingsEditReportingTagPage = lazy(() => import("../pages/settings/organization-settings/customization/reporting-tags/ReportingTagsRouter"));
+const SettingsReportingTagsPage = lazy(() => import("../pages/settings/organization-settings/customization/reporting-tags/ReportingTagsPage"));
+const SettingsWebTabsPage = lazy(() => import("../pages/settings/WebTabsPage"));
+
+// Automation
+const SettingsWorkflowRulesPage = lazy(() => import("../pages/settings/organization-settings/automation/workflow-rules/SettingsWorkflowRulesWrapper"));
+const SettingsWorkflowActionsPage = lazy(() => import("../pages/settings/organization-settings/automation/workflow-actions/SettingsWorkflowActionsWrapper"));
+const SettingsWorkflowLogsPage = lazy(() => import("../pages/settings/organization-settings/automation/workflow-logs/SettingsWorkflowLogsWrapper"));
+const SettingsSchedulesPage = lazy(() => import("../pages/settings/organization-settings/automation/schedules/SettingsSchedulesWrapper"));
+
+// Module Settings - General
+const SettingsCustomersVendorsPage = lazy(() => import("../pages/settings/module-settings/customers-vendors/SettingsCustomersVendorsWrapper"));
+const SettingsNewCustomersVendorsCustomFieldPage = lazy(() => import("../pages/settings/NewCustomersVendorsCustomFieldPage"));
+const SettingsItemsSettingsPage = lazy(() => import("../pages/settings/module-settings/items/SettingsItemsWrapper"));
+const SettingsNewItemsCustomFieldPage = lazy(() => import("../pages/settings/NewItemsCustomFieldPage"));
+const SettingsAccountantSettingsPage = lazy(() => import("../pages/settings/module-settings/accountant/SettingsAccountantWrapper"));
+const SettingsNewAccountantCustomFieldPage = lazy(() => import("../pages/settings/NewAccountantCustomFieldPage"));
+const SettingsTasksSettingsPage = lazy(() => import("../pages/settings/SettingsTasksWrapper"));
+const SettingsProjectsSettingsPage = lazy(() => import("../pages/settings/module-settings/projects/SettingsProjectsWrapper"));
+const SettingsNewProjectsCustomFieldPage = lazy(() => import("../pages/settings/NewProjectsCustomFieldPage"));
+const SettingsNewProjectsRelatedListPage = lazy(() => import("../pages/settings/NewProjectsRelatedListPage"));
+const SettingsTimesheetSettingsPage = lazy(() => import("../pages/settings/module-settings/timesheet/SettingsTimesheetWrapper"));
+const SettingsNewTimesheetCustomFieldPage = lazy(() => import("../pages/settings/NewTimesheetCustomFieldPage"));
+
+// Module Settings - Inventory
+const SettingsInventoryAdjustmentsSettingsPage = lazy(() => import("../pages/settings/InventoryAdjustmentsPage"));
+const SettingsNewInventoryAdjustmentsCustomFieldPage = lazy(() => import("../pages/settings/NewInventoryAdjustmentsCustomFieldPage"));
+
+// Module Settings - Sales
+const SettingsOnlinePaymentsPage = lazy(() => import("../pages/settings/OnlinePaymentsPage"));
+const SettingsQuotesSettingsPage = lazy(() => import("../pages/settings/QuotesPage"));
+const SettingsRetainerInvoicesSettingsPage = lazy(() => import("../pages/settings/RetainerInvoicesPage"));
+const SettingsSalesOrdersSettingsPage = lazy(() => import("../pages/settings/SalesOrdersPage"));
+const SettingsNewQuotesCustomFieldPage = lazy(() => import("../pages/settings/NewQuotesCustomFieldPage"));
+const SettingsNewQuotesRelatedListPage = lazy(() => import("../pages/settings/NewQuotesRelatedListPage"));
+const SettingsNewCustomApprovalPage = lazy(() => import("../pages/settings/NewCustomApprovalPage"));
+const SettingsInvoicesSettingsPage = lazy(() => import("../pages/settings/InvoicesPage"));
+const SettingsRecurringInvoicesSettingsPage = lazy(() => import("../pages/settings/RecurringInvoicesPage"));
+const SettingsSalesReceiptsSettingsPage = lazy(() => import("../pages/settings/SalesReceiptsPage"));
+const SettingsPaymentsReceivedSettingsPage = lazy(() => import("../pages/settings/PaymentsReceivedPage"));
+const SettingsCreditNotesSettingsPage = lazy(() => import("../pages/settings/CreditNotesPage"));
+const SettingsNewCreditNotesRelatedListPage = lazy(() => import("../pages/settings/NewCreditNotesRelatedListPageWrapper"));
+const SettingsDeliveryNotesSettingsPage = lazy(() => import("../pages/settings/DeliveryNotesPage"));
+const SettingsNewDeliveryNotesRelatedListPage = lazy(() => import("../pages/settings/NewDeliveryNotesRelatedListPageWrapper"));
+const SettingsPackingSlipsSettingsPage = lazy(() => import("../pages/settings/PackingSlipsPage"));
+const SettingsNewPackingSlipsRelatedListPage = lazy(() => import("../pages/settings/NewPackingSlipsRelatedListPageWrapper"));
+
+// Module Settings - Purchases
+const SettingsExpensesSettingsPage = lazy(() => import("../pages/settings/ExpensesPage"));
+const SettingsNewExpensesRelatedListPage = lazy(() => import("../pages/settings/NewExpensesRelatedListPageWrapper"));
+const SettingsPurchaseOrdersSettingsPage = lazy(() => import("../pages/settings/PurchaseOrdersPage"));
+const SettingsNewPurchaseOrdersRelatedListPage = lazy(() => import("../pages/settings/NewPurchaseOrdersRelatedListPageWrapper"));
+const SettingsBillsSettingsPage = lazy(() => import("../pages/settings/BillsPage"));
+const SettingsNewBillsRelatedListPage = lazy(() => import("../pages/settings/NewBillsRelatedListPageWrapper"));
+const SettingsRecurringBillsSettingsPage = lazy(() => import("../pages/settings/RecurringBillsPage"));
+const SettingsPaymentsMadeSettingsPage = lazy(() => import("../pages/settings/PaymentsMadePage"));
+const SettingsVendorCreditsSettingsPage = lazy(() => import("../pages/settings/VendorCreditsPage"));
+const SettingsNewVendorCreditsRelatedListPage = lazy(() => import("../pages/settings/NewVendorCreditsRelatedListPageWrapper"));
+
+// Custom Modules
+const SettingsCustomModulesSettingsPage = lazy(() => import("../pages/settings/CustomModulesPage"));
+
+
 const HomeDashboard = lazy(() => import("../pages/home/HomeDashboard"));
 const GettingStartedPage = lazy(() => import("../pages/home/GettingStartedPage"));
 const RecentUpdatesPage = lazy(() => import("../pages/home/RecentUpdatesPage"));
@@ -76,159 +176,6 @@ const AccountantPage = lazy(() => import("../pages/accountant/AccountantPage"));
 const ReportsPage = lazy(() => import("../pages/reports/ReportsPage"));
 const DocumentsPage = lazy(() => import("../pages/documents/DocumentsPage"));
 const OrganizationsManagePage = lazy(() => import("../pages/organizations/OrganizationsManagePage"));
-
-const AllSettings = lazy(() => import("../pages/settings/AllSettings"));
-const SettingsProfileWrapper = lazy(() => import("../pages/settings/SettingsProfileWrapper"));
-const SettingsBrandingWrapper = lazy(() => import("../pages/settings/SettingsBrandingWrapper"));
-const SettingsCustomDomainWrapper = lazy(() => import("../pages/settings/SettingsCustomDomainWrapper"));
-const SettingsLocationsWrapper = lazy(() => import("../pages/settings/SettingsLocationsWrapper"));
-const SettingsSubscriptionWrapper = lazy(() => import("../pages/settings/SettingsSubscriptionWrapper"));
-const SettingsUsersWrapper = lazy(() => import("../pages/settings/SettingsUsersWrapper"));
-const SettingsRolesWrapper = lazy(() => import("../pages/settings/SettingsRolesWrapper"));
-const NewRolePageWrapper = lazy(() => import("../pages/settings/NewRolePageWrapper"));
-const SettingsUserPreferencesWrapper = lazy(() => import("../pages/settings/SettingsUserPreferencesWrapper"));
-const NewCustomFieldPageWrapper = lazy(() => import("../pages/settings/NewCustomFieldPageWrapper"));
-const SettingsTaxesWrapper = lazy(() => import("../pages/settings/SettingsTaxesWrapper"));
-const SettingsVATWrapper = lazy(() => import("../pages/settings/SettingsVATWrapper"));
-const SettingsGeneralWrapper = lazy(() =>
-  import("../pages/settings/organization-settings/setup-configurations/general/SettingsGeneralWrapper"),
-);
-const SettingsCurrenciesWrapper = lazy(() =>
-  import("../pages/settings/organization-settings/setup-configurations/currencies/SettingsCurrenciesWrapper"),
-);
-const SettingsOpeningBalancesWrapper = lazy(() =>
-  import("../pages/settings/organization-settings/setup-configurations/opening-balances/SettingsOpeningBalancesWrapper"),
-);
-const SettingsRemindersWrapper = lazy(() =>
-  import("../pages/settings/organization-settings/setup-configurations/reminders/SettingsRemindersWrapper"),
-);
-const SettingsCustomerPortalWrapper = lazy(() => import("../pages/settings/SettingsCustomerPortalWrapper"));
-const SettingsVendorPortalWrapper = lazy(() => import("../pages/settings/SettingsVendorPortalWrapper"));
-const SettingsCustomizationWrapper = lazy(() => import("../pages/settings/SettingsCustomizationWrapper"));
-const SettingsWorkflowRulesWrapper = lazy(() =>
-  import("../pages/settings/organization-settings/automation/workflow-rules/SettingsWorkflowRulesWrapper"),
-);
-const SettingsWorkflowActionsWrapper = lazy(() =>
-  import("../pages/settings/organization-settings/automation/workflow-actions/SettingsWorkflowActionsWrapper"),
-);
-const SettingsWorkflowLogsWrapper = lazy(() =>
-  import("../pages/settings/organization-settings/automation/workflow-logs/SettingsWorkflowLogsWrapper"),
-);
-const SettingsSchedulesWrapper = lazy(() =>
-  import("../pages/settings/organization-settings/automation/schedules/SettingsSchedulesWrapper"),
-);
-const SettingsCustomersVendorsWrapper = lazy(() =>
-  import("../pages/settings/module-settings/customers-vendors/SettingsCustomersVendorsWrapper"),
-);
-const NewCustomersVendorsCustomFieldPageWrapper = lazy(() =>
-  import("../pages/settings/NewCustomersVendorsCustomFieldPageWrapper"),
-);
-const SettingsItemsWrapper = lazy(() =>
-  import("../pages/settings/module-settings/items/SettingsItemsWrapper"),
-);
-const NewItemsCustomFieldPageWrapper = lazy(() =>
-  import("../pages/settings/NewItemsCustomFieldPageWrapper"),
-);
-const SettingsAccountantWrapper = lazy(() =>
-  import("../pages/settings/module-settings/accountant/SettingsAccountantWrapper"),
-);
-const SettingsTasksWrapper = lazy(() => import("../pages/settings/SettingsTasksWrapper"));
-const NewAccountantCustomFieldPageWrapper = lazy(() =>
-  import("../pages/settings/NewAccountantCustomFieldPageWrapper"),
-);
-const SettingsProjectsWrapper = lazy(() =>
-  import("../pages/settings/module-settings/projects/SettingsProjectsWrapper"),
-);
-const NewProjectsCustomFieldPageWrapper = lazy(() =>
-  import("../pages/settings/NewProjectsCustomFieldPageWrapper"),
-);
-const NewProjectsRelatedListPageWrapper = lazy(() =>
-  import("../pages/settings/NewProjectsRelatedListPageWrapper"),
-);
-const SettingsTimesheetWrapper = lazy(() =>
-  import("../pages/settings/module-settings/timesheet/SettingsTimesheetWrapper"),
-);
-const NewTimesheetCustomFieldPageWrapper = lazy(() =>
-  import("../pages/settings/NewTimesheetCustomFieldPageWrapper"),
-);
-const SettingsInventoryAdjustmentsWrapper = lazy(() =>
-  import("../pages/settings/SettingsInventoryAdjustmentsWrapper"),
-);
-const NewInventoryAdjustmentsCustomFieldPageWrapper = lazy(() =>
-  import("../pages/settings/NewInventoryAdjustmentsCustomFieldPageWrapper"),
-);
-const SettingsOnlinePaymentsWrapper = lazy(() => import("../pages/settings/SettingsOnlinePaymentsWrapper"));
-const SettingsQuotesWrapper = lazy(() => import("../pages/settings/SettingsQuotesWrapper"));
-const SettingsRetainerInvoicesWrapper = lazy(() =>
-  import("../pages/settings/SettingsRetainerInvoicesWrapper"),
-);
-const SettingsSalesOrdersWrapper = lazy(() =>
-  import("../pages/settings/SettingsSalesOrdersWrapper"),
-);
-const NewQuotesCustomFieldPageWrapper = lazy(() =>
-  import("../pages/settings/NewQuotesCustomFieldPageWrapper"),
-);
-const NewQuotesRelatedListPageWrapper = lazy(() =>
-  import("../pages/settings/NewQuotesRelatedListPageWrapper"),
-);
-const NewCustomApprovalPageWrapper = lazy(() =>
-  import("../pages/settings/NewCustomApprovalPageWrapper"),
-);
-const SettingsInvoicesWrapper = lazy(() => import("../pages/settings/SettingsInvoicesWrapper"));
-const SettingsRecurringInvoicesWrapper = lazy(() =>
-  import("../pages/settings/SettingsRecurringInvoicesWrapper"),
-);
-const SettingsSalesReceiptsWrapper = lazy(() =>
-  import("../pages/settings/SettingsSalesReceiptsWrapper"),
-);
-const SettingsPaymentsReceivedWrapper = lazy(() =>
-  import("../pages/settings/SettingsPaymentsReceivedWrapper"),
-);
-const SettingsCreditNotesWrapper = lazy(() => import("../pages/settings/SettingsCreditNotesWrapper"));
-const NewCreditNotesRelatedListPageWrapper = lazy(() =>
-  import("../pages/settings/NewCreditNotesRelatedListPageWrapper"),
-);
-const SettingsDeliveryNotesWrapper = lazy(() =>
-  import("../pages/settings/SettingsDeliveryNotesWrapper"),
-);
-const NewDeliveryNotesRelatedListPageWrapper = lazy(() =>
-  import("../pages/settings/NewDeliveryNotesRelatedListPageWrapper"),
-);
-const SettingsPackingSlipsWrapper = lazy(() =>
-  import("../pages/settings/SettingsPackingSlipsWrapper"),
-);
-const NewPackingSlipsRelatedListPageWrapper = lazy(() =>
-  import("../pages/settings/NewPackingSlipsRelatedListPageWrapper"),
-);
-const SettingsExpensesWrapper = lazy(() => import("../pages/settings/SettingsExpensesWrapper"));
-const NewExpensesRelatedListPageWrapper = lazy(() =>
-  import("../pages/settings/NewExpensesRelatedListPageWrapper"),
-);
-const SettingsPurchaseOrdersWrapper = lazy(() =>
-  import("../pages/settings/SettingsPurchaseOrdersWrapper"),
-);
-const NewPurchaseOrdersRelatedListPageWrapper = lazy(() =>
-  import("../pages/settings/NewPurchaseOrdersRelatedListPageWrapper"),
-);
-const SettingsBillsWrapper = lazy(() => import("../pages/settings/SettingsBillsWrapper"));
-const NewBillsRelatedListPageWrapper = lazy(() =>
-  import("../pages/settings/NewBillsRelatedListPageWrapper"),
-);
-const SettingsRecurringBillsWrapper = lazy(() =>
-  import("../pages/settings/SettingsRecurringBillsWrapper"),
-);
-const SettingsPaymentsMadeWrapper = lazy(() =>
-  import("../pages/settings/SettingsPaymentsMadeWrapper"),
-);
-const SettingsVendorCreditsWrapper = lazy(() =>
-  import("../pages/settings/SettingsVendorCreditsWrapper"),
-);
-const NewVendorCreditsRelatedListPageWrapper = lazy(() =>
-  import("../pages/settings/NewVendorCreditsRelatedListPageWrapper"),
-);
-const SettingsCustomModulesWrapper = lazy(() =>
-  import("../pages/settings/SettingsCustomModulesWrapper"),
-);
 
 function RouteLoadingState() {
   return (
@@ -375,94 +322,96 @@ export default function AppRoutes() {
             </ProtectedRoute>
           }
         >
-          <Route path="/settings" element={<AllSettings />} />
-          <Route path="/settings/profile" element={<SettingsProfileWrapper />} />
-          <Route path="/settings/branding" element={<SettingsBrandingWrapper />} />
-          <Route path="/settings/custom-domain" element={<SettingsCustomDomainWrapper />} />
-          <Route path="/settings/locations/*" element={<SettingsLocationsWrapper />} />
-          <Route path="/settings/subscription" element={<SettingsSubscriptionWrapper />} />
-          <Route path="/settings/users" element={<SettingsUsersWrapper />} />
-          <Route path="/settings/roles" element={<SettingsRolesWrapper />} />
-          <Route path="/settings/roles/new" element={<NewRolePageWrapper />} />
-          <Route path="/settings/roles/edit/:id" element={<NewRolePageWrapper />} />
-          <Route path="/settings/user-preferences" element={<SettingsUserPreferencesWrapper />} />
-          <Route path="/settings/user-preferences/new-field" element={<NewCustomFieldPageWrapper />} />
-          <Route path="/settings/taxes/*" element={<SettingsTaxesWrapper />} />
-          <Route path="/settings/vat" element={<SettingsVATWrapper />} />
-          <Route path="/settings/general" element={<SettingsGeneralWrapper />} />
-          <Route path="/settings/currencies/*" element={<SettingsCurrenciesWrapper />} />
-          <Route path="/settings/opening-balances/*" element={<SettingsOpeningBalancesWrapper />} />
-          <Route path="/settings/reminders" element={<SettingsRemindersWrapper />} />
-          <Route path="/settings/customer-portal" element={<SettingsCustomerPortalWrapper />} />
-          <Route path="/settings/vendor-portal" element={<SettingsVendorPortalWrapper />} />
-          <Route path="/settings/customization/transaction-number-series" element={<SettingsCustomizationWrapper />} />
-          <Route path="/settings/customization/pdf-templates/edit" element={<SettingsCustomizationWrapper />} />
-          <Route path="/settings/customization/pdf-templates" element={<SettingsCustomizationWrapper />} />
-          <Route path="/settings/customization/email-notifications/new-server" element={<SettingsCustomizationWrapper />} />
-          <Route path="/settings/customization/email-notifications" element={<SettingsCustomizationWrapper />} />
-          <Route path="/settings/customization/reporting-tags/new" element={<SettingsCustomizationWrapper />} />
-          <Route path="/settings/customization/reporting-tags/:id" element={<SettingsCustomizationWrapper />} />
-          <Route path="/settings/customization/reporting-tags" element={<SettingsCustomizationWrapper />} />
-          <Route path="/settings/customization/web-tabs" element={<SettingsCustomizationWrapper />} />
-          <Route path="/settings/workflow-rules" element={<SettingsWorkflowRulesWrapper />} />
-          <Route path="/settings/workflow-actions" element={<SettingsWorkflowActionsWrapper />} />
-          <Route path="/settings/workflow-logs" element={<SettingsWorkflowLogsWrapper />} />
-          <Route path="/settings/schedules" element={<SettingsSchedulesWrapper />} />
-          <Route path="/settings/customers-vendors" element={<SettingsCustomersVendorsWrapper />} />
-          <Route path="/settings/customers-vendors/new-field" element={<NewCustomersVendorsCustomFieldPageWrapper />} />
-          <Route path="/settings/items" element={<SettingsItemsWrapper />} />
-          <Route path="/settings/items/new-field" element={<NewItemsCustomFieldPageWrapper />} />
-          <Route path="/settings/accountant" element={<SettingsAccountantWrapper />} />
-          <Route path="/settings/accountant/journal/new-field" element={<NewAccountantCustomFieldPageWrapper />} />
-          <Route path="/settings/accountant/chart/new-field" element={<NewAccountantCustomFieldPageWrapper />} />
-          <Route path="/settings/tasks" element={<SettingsTasksWrapper />} />
-          <Route path="/settings/projects" element={<SettingsProjectsWrapper />} />
-          <Route path="/settings/projects/new-field" element={<NewProjectsCustomFieldPageWrapper />} />
-          <Route path="/settings/projects/new-related-list" element={<NewProjectsRelatedListPageWrapper />} />
-          <Route path="/settings/timesheet" element={<SettingsTimesheetWrapper />} />
-          <Route path="/settings/timesheet/new-field" element={<NewTimesheetCustomFieldPageWrapper />} />
-          <Route path="/settings/inventory-adjustments" element={<SettingsInventoryAdjustmentsWrapper />} />
-          <Route path="/settings/inventory-adjustments/new-field" element={<NewInventoryAdjustmentsCustomFieldPageWrapper />} />
-          <Route path="/settings/online-payments" element={<SettingsOnlinePaymentsWrapper />} />
-          <Route path="/settings/quotes" element={<SettingsQuotesWrapper />} />
-          <Route path="/settings/retainer-invoices" element={<SettingsRetainerInvoicesWrapper />} />
-          <Route path="/settings/sales-orders" element={<SettingsSalesOrdersWrapper />} />
-          <Route path="/settings/quotes/new-field" element={<NewQuotesCustomFieldPageWrapper />} />
-          <Route path="/settings/quotes/new-related-list" element={<NewQuotesRelatedListPageWrapper />} />
-          <Route path="/settings/quotes/new-custom-approval" element={<NewCustomApprovalPageWrapper />} />
-          <Route path="/settings/invoices" element={<SettingsInvoicesWrapper />} />
-          <Route path="/settings/invoices/new-field" element={<NewQuotesCustomFieldPageWrapper />} />
-          <Route path="/settings/recurring-invoices" element={<SettingsRecurringInvoicesWrapper />} />
-          <Route path="/settings/recurring-invoices/new-field" element={<NewQuotesCustomFieldPageWrapper />} />
-          <Route path="/settings/sales-receipts" element={<SettingsSalesReceiptsWrapper />} />
-          <Route path="/settings/sales-receipts/new-field" element={<NewQuotesCustomFieldPageWrapper />} />
-          <Route path="/settings/payments-received" element={<SettingsPaymentsReceivedWrapper />} />
-          <Route path="/settings/payments-received/new-field" element={<NewQuotesCustomFieldPageWrapper />} />
-          <Route path="/settings/credit-notes" element={<SettingsCreditNotesWrapper />} />
-          <Route path="/settings/credit-notes/new-field" element={<NewQuotesCustomFieldPageWrapper />} />
-          <Route path="/settings/credit-notes/new-related-list" element={<NewCreditNotesRelatedListPageWrapper />} />
-          <Route path="/settings/delivery-notes" element={<SettingsDeliveryNotesWrapper />} />
-          <Route path="/settings/delivery-notes/new-field" element={<NewQuotesCustomFieldPageWrapper />} />
-          <Route path="/settings/delivery-notes/new-related-list" element={<NewDeliveryNotesRelatedListPageWrapper />} />
-          <Route path="/settings/packing-slips" element={<SettingsPackingSlipsWrapper />} />
-          <Route path="/settings/packing-slips/new-field" element={<NewQuotesCustomFieldPageWrapper />} />
-          <Route path="/settings/packing-slips/new-related-list" element={<NewPackingSlipsRelatedListPageWrapper />} />
-          <Route path="/settings/expenses" element={<SettingsExpensesWrapper />} />
-          <Route path="/settings/expenses/new-field" element={<NewQuotesCustomFieldPageWrapper />} />
-          <Route path="/settings/expenses/new-related-list" element={<NewExpensesRelatedListPageWrapper />} />
-          <Route path="/settings/purchase-orders" element={<SettingsPurchaseOrdersWrapper />} />
-          <Route path="/settings/purchase-orders/new-field" element={<NewQuotesCustomFieldPageWrapper />} />
-          <Route path="/settings/purchase-orders/new-related-list" element={<NewPurchaseOrdersRelatedListPageWrapper />} />
-          <Route path="/settings/bills" element={<SettingsBillsWrapper />} />
-          <Route path="/settings/bills/new-field" element={<NewQuotesCustomFieldPageWrapper />} />
-          <Route path="/settings/bills/new-related-list" element={<NewBillsRelatedListPageWrapper />} />
-          <Route path="/settings/recurring-bills" element={<SettingsRecurringBillsWrapper />} />
-          <Route path="/settings/payments-made" element={<SettingsPaymentsMadeWrapper />} />
-          <Route path="/settings/payments-made/new-field" element={<NewQuotesCustomFieldPageWrapper />} />
-          <Route path="/settings/vendor-credits" element={<SettingsVendorCreditsWrapper />} />
-          <Route path="/settings/vendor-credits/new-field" element={<NewQuotesCustomFieldPageWrapper />} />
-          <Route path="/settings/vendor-credits/new-related-list" element={<NewVendorCreditsRelatedListPageWrapper />} />
-          <Route path="/settings/custom-modules" element={<SettingsCustomModulesWrapper />} />
+          <Route element={<SettingsLayout />}>
+            <Route path="/settings" element={<AllSettings />} />
+            <Route path="/settings/profile" element={<SettingsProfilePage />} />
+            <Route path="/settings/branding" element={<SettingsBrandingPage />} />
+            <Route path="/settings/custom-domain" element={<SettingsCustomDomainPage />} />
+            <Route path="/settings/locations/*" element={<SettingsLocationsWrapper />} />
+            <Route path="/settings/subscription" element={<SettingsSubscriptionPage />} />
+            <Route path="/settings/users" element={<SettingsUsersPage />} />
+            <Route path="/settings/roles" element={<SettingsRolesPage />} />
+            <Route path="/settings/roles/new" element={<SettingsNewRolePage />} />
+            <Route path="/settings/roles/edit/:id" element={<SettingsNewRolePage />} />
+            <Route path="/settings/user-preferences" element={<SettingsUserPreferencesPage />} />
+            <Route path="/settings/user-preferences/new-field" element={<NewCustomFieldPage />} />
+            <Route path="/settings/taxes/*" element={<SettingsTaxesPage />} />
+            <Route path="/settings/vat" element={<SettingsVATPage />} />
+            <Route path="/settings/general" element={<SettingsGeneralPage />} />
+            <Route path="/settings/currencies/*" element={<SettingsCurrenciesRouter />} />
+            <Route path="/settings/opening-balances/*" element={<SettingsOpeningBalancesRouter />} />
+            <Route path="/settings/reminders" element={<SettingsRemindersPage />} />
+            <Route path="/settings/customer-portal" element={<SettingsCustomerPortalPage />} />
+            <Route path="/settings/vendor-portal" element={<SettingsVendorPortalPage />} />
+            <Route path="/settings/customization/transaction-number-series" element={<SettingsTransactionNumberSeriesPage />} />
+            <Route path="/settings/customization/pdf-templates/edit" element={<SettingsTemplateEditorPage />} />
+            <Route path="/settings/customization/pdf-templates" element={<SettingsPDFTemplatesPage />} />
+            <Route path="/settings/customization/email-notifications/new-server" element={<SettingsNewServerPage />} />
+            <Route path="/settings/customization/email-notifications" element={<SettingsEmailNotificationsPage />} />
+            <Route path="/settings/customization/reporting-tags/new" element={<SettingsNewReportingTagPage />} />
+            <Route path="/settings/customization/reporting-tags/:id" element={<SettingsEditReportingTagPage />} />
+            <Route path="/settings/customization/reporting-tags" element={<SettingsReportingTagsPage />} />
+            <Route path="/settings/customization/web-tabs" element={<SettingsWebTabsPage />} />
+            <Route path="/settings/workflow-rules" element={<SettingsWorkflowRulesPage />} />
+            <Route path="/settings/workflow-actions" element={<SettingsWorkflowActionsPage />} />
+            <Route path="/settings/workflow-logs" element={<SettingsWorkflowLogsPage />} />
+            <Route path="/settings/schedules" element={<SettingsSchedulesPage />} />
+            <Route path="/settings/customers-vendors" element={<SettingsCustomersVendorsPage />} />
+            <Route path="/settings/customers-vendors/new-field" element={<SettingsNewCustomersVendorsCustomFieldPage />} />
+            <Route path="/settings/items" element={<SettingsItemsSettingsPage />} />
+            <Route path="/settings/items/new-field" element={<SettingsNewItemsCustomFieldPage />} />
+            <Route path="/settings/accountant" element={<SettingsAccountantSettingsPage />} />
+            <Route path="/settings/accountant/journal/new-field" element={<SettingsNewAccountantCustomFieldPage />} />
+            <Route path="/settings/accountant/chart/new-field" element={<SettingsNewAccountantCustomFieldPage />} />
+            <Route path="/settings/tasks" element={<SettingsTasksSettingsPage />} />
+            <Route path="/settings/projects" element={<SettingsProjectsSettingsPage />} />
+            <Route path="/settings/projects/new-field" element={<SettingsNewProjectsCustomFieldPage />} />
+            <Route path="/settings/projects/new-related-list" element={<SettingsNewProjectsRelatedListPage />} />
+            <Route path="/settings/timesheet" element={<SettingsTimesheetSettingsPage />} />
+            <Route path="/settings/timesheet/new-field" element={<SettingsNewTimesheetCustomFieldPage />} />
+            <Route path="/settings/inventory-adjustments" element={<SettingsInventoryAdjustmentsSettingsPage />} />
+            <Route path="/settings/inventory-adjustments/new-field" element={<SettingsNewInventoryAdjustmentsCustomFieldPage />} />
+            <Route path="/settings/online-payments" element={<SettingsOnlinePaymentsPage />} />
+            <Route path="/settings/quotes" element={<SettingsQuotesSettingsPage />} />
+            <Route path="/settings/retainer-invoices" element={<SettingsRetainerInvoicesSettingsPage />} />
+            <Route path="/settings/sales-orders" element={<SettingsSalesOrdersSettingsPage />} />
+            <Route path="/settings/quotes/new-field" element={<SettingsNewQuotesCustomFieldPage />} />
+            <Route path="/settings/quotes/new-related-list" element={<SettingsNewQuotesRelatedListPage />} />
+            <Route path="/settings/quotes/new-custom-approval" element={<SettingsNewCustomApprovalPage />} />
+            <Route path="/settings/invoices" element={<SettingsInvoicesSettingsPage />} />
+            <Route path="/settings/invoices/new-field" element={<SettingsNewQuotesCustomFieldPage />} />
+            <Route path="/settings/recurring-invoices" element={<SettingsRecurringInvoicesSettingsPage />} />
+            <Route path="/settings/recurring-invoices/new-field" element={<SettingsNewQuotesCustomFieldPage />} />
+            <Route path="/settings/sales-receipts" element={<SettingsSalesReceiptsSettingsPage />} />
+            <Route path="/settings/sales-receipts/new-field" element={<SettingsNewQuotesCustomFieldPage />} />
+            <Route path="/settings/payments-received" element={<SettingsPaymentsReceivedSettingsPage />} />
+            <Route path="/settings/payments-received/new-field" element={<SettingsNewQuotesCustomFieldPage />} />
+            <Route path="/settings/credit-notes" element={<SettingsCreditNotesSettingsPage />} />
+            <Route path="/settings/credit-notes/new-field" element={<SettingsNewQuotesCustomFieldPage />} />
+            <Route path="/settings/credit-notes/new-related-list" element={<SettingsNewCreditNotesRelatedListPage />} />
+            <Route path="/settings/delivery-notes" element={<SettingsDeliveryNotesSettingsPage />} />
+            <Route path="/settings/delivery-notes/new-field" element={<SettingsNewQuotesCustomFieldPage />} />
+            <Route path="/settings/delivery-notes/new-related-list" element={<SettingsNewDeliveryNotesRelatedListPage />} />
+            <Route path="/settings/packing-slips" element={<SettingsPackingSlipsSettingsPage />} />
+            <Route path="/settings/packing-slips/new-field" element={<SettingsNewQuotesCustomFieldPage />} />
+            <Route path="/settings/packing-slips/new-related-list" element={<SettingsNewPackingSlipsRelatedListPage />} />
+            <Route path="/settings/expenses" element={<SettingsExpensesSettingsPage />} />
+            <Route path="/settings/expenses/new-field" element={<SettingsNewQuotesCustomFieldPage />} />
+            <Route path="/settings/expenses/new-related-list" element={<SettingsNewExpensesRelatedListPage />} />
+            <Route path="/settings/purchase-orders" element={<SettingsPurchaseOrdersSettingsPage />} />
+            <Route path="/settings/purchase-orders/new-field" element={<SettingsNewQuotesCustomFieldPage />} />
+            <Route path="/settings/purchase-orders/new-related-list" element={<SettingsNewPurchaseOrdersRelatedListPage />} />
+            <Route path="/settings/bills" element={<SettingsBillsSettingsPage />} />
+            <Route path="/settings/bills/new-field" element={<SettingsNewQuotesCustomFieldPage />} />
+            <Route path="/settings/bills/new-related-list" element={<SettingsNewBillsRelatedListPage />} />
+            <Route path="/settings/recurring-bills" element={<SettingsRecurringBillsSettingsPage />} />
+            <Route path="/settings/payments-made" element={<SettingsPaymentsMadeSettingsPage />} />
+            <Route path="/settings/payments-made/new-field" element={<SettingsNewQuotesCustomFieldPage />} />
+            <Route path="/settings/vendor-credits" element={<SettingsVendorCreditsSettingsPage />} />
+            <Route path="/settings/vendor-credits/new-field" element={<SettingsNewQuotesCustomFieldPage />} />
+            <Route path="/settings/vendor-credits/new-related-list" element={<SettingsNewVendorCreditsRelatedListPage />} />
+            <Route path="/settings/custom-modules" element={<SettingsCustomModulesSettingsPage />} />
+          </Route>
         </Route>
       </Routes>
     </Suspense>

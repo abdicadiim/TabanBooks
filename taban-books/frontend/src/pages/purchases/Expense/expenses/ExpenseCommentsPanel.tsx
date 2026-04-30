@@ -1,5 +1,5 @@
 import React from "react";
-import QuoteCommentsPanel from "../../sales/Quotes/QuoteDetail/QuoteCommentsPanel";
+import QuoteCommentsPanel from "../../../sales/Quotes/QuoteDetail/QuoteCommentsPanel";
 
 type ExpenseCommentsPanelProps = {
   open: boolean;

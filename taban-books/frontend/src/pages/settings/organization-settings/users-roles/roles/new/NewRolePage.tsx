@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { HelpCircle, Lock, ChevronRight, ChevronDown, AlertCircle, X } from "lucide-react";
 import { rolesAPI } from "../../../../../../services/api";
@@ -1039,6 +1039,15 @@ export default function NewRolePage() {
       setAutomationPermissions(updated);
     }
   };
+
+  if (isLoadingRole) {
+    return (
+      <div className="p-6 w-full flex flex-col items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#156372] mb-4"></div>
+        <p className="text-gray-500 font-medium">Loading role data...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 w-full">
@@ -3917,7 +3926,7 @@ export default function NewRolePage() {
       </div>
 
       {/* Action Buttons */}
-      <div className="flex items-center gap-3">
+      <div className="sticky bottom-0 z-50 flex items-center gap-3 bg-white py-4 mt-6 border-t border-gray-100 -mx-6 px-6">
         <button
           onClick={() => navigate("/settings/roles")}
           className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
@@ -4001,7 +4010,7 @@ export default function NewRolePage() {
               } else {
                 setError(response.message || (isEditMode ? "Failed to update role" : "Failed to create role"));
               }
-            } catch (err) {
+            } catch (err: any) {
               console.error("Error saving role:", err);
               setError(err.message || "Failed to save role. Please try again.");
             } finally {
@@ -4009,7 +4018,7 @@ export default function NewRolePage() {
             }
           }}
           disabled={isSaving || isLoadingRole}
-          className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-lg bg-[#156372] text-white text-sm font-medium hover:bg-[#0f4e5a] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isLoadingRole ? "Loading..." : isSaving ? "Saving..." : isEditMode ? "Update" : "Save"}
         </button>
