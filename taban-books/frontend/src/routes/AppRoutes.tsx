@@ -8,6 +8,7 @@ import { usePermissions } from "../hooks/usePermissions";
 import { lazyRetry } from "../utils/lazyRetry";
 
 const Login = lazy(() => import("../auth/Login"));
+const ForgotPasswordPage = lazy(() => import("../auth/ForgotPasswordPage"));
 const Signup = lazy(() => import("../auth/Signup"));
 const OrganizationProfile = lazy(() => import("../auth/OrganizationProfile"));
 const LoadingPage = lazy(() => import("../auth/LoadingPage"));
@@ -246,6 +247,7 @@ export default function AppRoutes() {
     <Suspense fallback={<RouteLoadingState />}>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/onboarding" element={<OrganizationProfile />} />
         <Route path="/loading" element={<LoadingPage />} />

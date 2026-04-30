@@ -3265,7 +3265,7 @@ export default function BillDetail() {
               </div>
             </div>
           ) : (
-            <div>
+            <>
               {/* Payments Made Tab Content */}
               {activeTab === "Payments Made" && (
                 <div style={{ padding: "24px", backgroundColor: "#ffffff" }}>
@@ -3590,9 +3590,33 @@ export default function BillDetail() {
                     </table>
                   </div>
 
+              {/* Payments Made Tab Content */}
+              {false && activeTab === "Payments Made" && (
+                <div style={{ padding: "24px", backgroundColor: "#ffffff" }}>
+                  {payments.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "48px 0", color: "#9ca3af" }}>
+                      No payments recorded yet
+                    </div>
+                  ) : (
+                    <div>
+                      {payments.map((payment) => (
+                        <div key={payment.id} style={{ padding: "16px", borderBottom: "1px solid #e5e7eb" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <div>
+                              <div style={{ fontWeight: "600" }}>Payment #{payment.id}</div>
+                              <div style={{ fontSize: "13px", color: "#6b7280" }}>{formatDateShort(payment.date)}</div>
+                            </div>
+                            <div style={{ fontWeight: "600", color: "#059669" }}>
+                              {resolvedBaseCurrencySymbol} {parseFloat(String(payment.amount)).toFixed(2)}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-
-            </div>
+              )}
+            </>
           )}
         </div>
       </div>

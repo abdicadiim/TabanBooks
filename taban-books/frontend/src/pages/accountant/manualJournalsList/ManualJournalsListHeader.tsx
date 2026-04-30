@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Building2,
+  ArrowUpDown,
   ChevronDown,
   ChevronRight,
   Download,
@@ -55,8 +56,16 @@ export function ManualJournalsListHeader({
   hasActiveSearch,
   importActions,
   isBusy,
+  periodOptions,
+  selectedPeriod,
+  sortBy,
+  sortOptions,
+  sortOrder,
+  totalCount,
   viewOptions,
   onChangeView,
+  onChangePeriod,
+  onChangeSort,
   onClearAdvancedSearch,
   onImport,
   onNewCustomView: _onNewCustomView,
@@ -66,6 +75,7 @@ export function ManualJournalsListHeader({
   onOpenAccountants: _onOpenAccountants,
   onOpenExport,
   onOpenSearch,
+  onToggleSortOrder,
 }: ManualJournalsListHeaderProps) {
   const [showNewMenu, setShowNewMenu] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -806,7 +816,7 @@ export function ManualJournalsListHeader({
 
           <button
             type="button"
-            onClick={onNewCustomView}
+            onClick={_onNewCustomView}
             style={{
               borderRadius: "14px",
               border: "1px dashed #94a3b8",
@@ -821,7 +831,7 @@ export function ManualJournalsListHeader({
             New Custom View
           </button>
         </div>
-      </section>
     </div>
+  </div>
   );
 }

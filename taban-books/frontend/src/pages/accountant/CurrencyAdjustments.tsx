@@ -261,7 +261,13 @@ export default function CurrencyAdjustments() {
                   checked={selectedIds.length === filteredAdjustments.length && filteredAdjustments.length > 0}
                   onChange={() => {
                     if (selectedIds.length === filteredAdjustments.length) setSelectedIds([]);
-                    else setSelectedIds(filteredAdjustments.map(a => getCurrencyAdjustmentIdentifier(a)));
+                    else {
+                      setSelectedIds(
+                        filteredAdjustments
+                          .map((a) => getCurrencyAdjustmentIdentifier(a))
+                          .filter((id): id is string => Boolean(id)),
+                      );
+                    }
                   }}
                   className="rounded border-gray-300 text-slate-600 focus:ring-slate-500"
                 />
@@ -322,53 +328,6 @@ export default function CurrencyAdjustments() {
             )}
           </tbody>
         </table>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={8} style={{ padding: 18, color: "#64748b" }}>Loading adjustments...</td>
-                </tr>
-              ) : filteredAdjustments.length === 0 ? (
-                <tr>
-                  <td colSpan={8} style={{ padding: 18, color: "#64748b" }}>
-                    No adjustments found. Create one using "+ Make an Adjustment".
-                  </td>
-                </tr>
-              ) : (
-                filteredAdjustments.map((a) => {
-                  const id = getCurrencyAdjustmentIdentifier(a);
-                  if (!id) return null;
-                  const selected = selectedIds.includes(id);
-                  return (
-                    <tr key={id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                      <td style={{ padding: "10px 12px" }}>
-                        <input type="checkbox" checked={selected} onChange={() => toggleSelection(id)} />
-                      </td>
-                      <td style={{ padding: "10px 12px" }}>{toCurrencyAdjustmentInputDate(a.date)}</td>
-                      <td style={{ padding: "10px 12px" }}>{a.currency}</td>
-                      <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrencyAdjustmentMoney(Number(a.previousExchangeRate || 1))}</td>
-                      <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrencyAdjustmentMoney(Number(a.exchangeRate || 0))}</td>
-                      <td style={{ padding: "10px 12px", textAlign: "right", color: Number(a.gainOrLoss) >= 0 ? "#047857" : "#b91c1c", fontWeight: 700 }}>
-                        {Number(a.gainOrLoss) >= 0 ? "+" : ""}{formatCurrencyAdjustmentMoney(Number(a.gainOrLoss || 0))}
-                      </td>
-                      <td style={{ padding: "10px 12px", color: "#156372", maxWidth: 320 }}>{a.notes}</td>
-                      <td style={{ padding: "10px 12px", textAlign: "right" }}>
-                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                          <button
-                            onClick={() => deleteOne(id)}
-                            style={{ border: "1px solid #fecaca", background: "#fff1f2", color: "#b91c1c", borderRadius: 6, padding: "5px 8px", cursor: "pointer" }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
       </div>
 
       {showCreateModal && (
@@ -408,7 +367,7 @@ export default function CurrencyAdjustments() {
                 <label className="block text-[13px] text-rose-500 font-medium mb-1.5">Exchange Rate*</label>
                 <div className="flex items-center">
                   <div className="h-[34px] flex items-center px-3 border border-r-0 border-gray-300 bg-gray-50 text-[13px] text-gray-500 rounded-l">
-                    1 {adjustments[0]?.baseCurrency || "AED"} =
+                    1 {adjustments[0]?.currency || "AED"} =
                   </div>
                   <input
                     type="number"

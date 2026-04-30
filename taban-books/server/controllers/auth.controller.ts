@@ -55,6 +55,8 @@ interface LoginBody {
 
 const normalizeEmail = (email: string = ""): string => String(email || "").trim().toLowerCase();
 
+const generateResetCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
 const DEFAULT_BRANDING = {
   appearance: "dark",
   accentColor: "#3b82f6",
@@ -961,6 +963,135 @@ export const resendOTP = async (req: AuthRequest, res: Response): Promise<void> 
     res.json({ success: true, message: "Verification code resent successfully" });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message || "Error resending code" });
+  }
+};
+
+/**
+ * @route   POST /api/auth/password/reset-request
+ * @desc    Send password reset code to the user's email
+ */
+export const requestPasswordReset = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    if (!email) {
+      res.status(400).json({ success: false, message: "Email is required" });
+      return;
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      res.status(404).json({ success: false, message: "Account not found" });
+      return;
+    }
+
+    const otp = generateResetCode();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+    user.verificationCode = otp;
+    user.verificationCodeExpires = otpExpires;
+    await user.save();
+
+    const sent = await sendOTPEmail(email, otp, user.organization.toString());
+    if (!sent) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to send reset code. Please verify email settings and try again.",
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: "Reset code sent successfully",
+      data: { expiresInSeconds: 10 * 60 },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message || "Failed to request password reset" });
+  }
+};
+
+/**
+ * @route   POST /api/auth/password/reset-verify
+ * @desc    Verify password reset code
+ */
+export const verifyPasswordResetCode = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    const code = String(req.body.code || "").trim();
+
+    if (!email || !code) {
+      res.status(400).json({ success: false, message: "Email and code are required" });
+      return;
+    }
+
+    const user = await User.findOne({ email }).select("+verificationCode +verificationCodeExpires");
+    if (!user) {
+      res.status(404).json({ success: false, message: "Account not found" });
+      return;
+    }
+
+    if (user.verificationCode !== code) {
+      res.status(400).json({ success: false, message: "Invalid verification code" });
+      return;
+    }
+
+    if (user.verificationCodeExpires && user.verificationCodeExpires < new Date()) {
+      res.status(400).json({ success: false, message: "Verification code has expired" });
+      return;
+    }
+
+    res.json({ success: true, message: "Reset code verified successfully" });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message || "Failed to verify reset code" });
+  }
+};
+
+/**
+ * @route   POST /api/auth/password/reset
+ * @desc    Reset user password using a verified code
+ */
+export const resetPassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    const code = String(req.body.code || "").trim();
+    const newPassword = String(req.body.newPassword || "");
+
+    if (!email || !code || !newPassword) {
+      res.status(400).json({ success: false, message: "Email, code and new password are required" });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      res.status(400).json({ success: false, message: "Password must be at least 6 characters" });
+      return;
+    }
+
+    const user = await User.findOne({ email }).select("+password +verificationCode +verificationCodeExpires");
+    if (!user) {
+      res.status(404).json({ success: false, message: "Account not found" });
+      return;
+    }
+
+    if (user.verificationCode !== code) {
+      res.status(400).json({ success: false, message: "Invalid verification code" });
+      return;
+    }
+
+    if (user.verificationCodeExpires && user.verificationCodeExpires < new Date()) {
+      res.status(400).json({ success: false, message: "Verification code has expired" });
+      return;
+    }
+
+    user.password = newPassword;
+    user.verificationCode = undefined;
+    user.verificationCodeExpires = undefined;
+    user.lastLogin = new Date();
+    user.isActive = true;
+    await user.save();
+
+    res.json({ success: true, message: "Password reset successfully" });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message || "Failed to reset password" });
   }
 };
 

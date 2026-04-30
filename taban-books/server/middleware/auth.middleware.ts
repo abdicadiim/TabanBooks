@@ -35,6 +35,9 @@ export interface AuthRequest extends Request {
 const verificationExemptPrefixes = [
     "/api/auth/verify-account",
     "/api/auth/resend-otp",
+    "/api/auth/password/reset-request",
+    "/api/auth/password/reset-verify",
+    "/api/auth/password/reset",
     "/api/auth/logout",
     "/api/auth/me",
     "/api/settings/organization/profile",

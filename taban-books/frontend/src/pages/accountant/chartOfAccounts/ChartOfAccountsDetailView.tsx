@@ -3,13 +3,13 @@ import {
   X,
   FileText,
   Clock,
+  Loader2,
   Printer,
   ChevronRight,
   TrendingUp,
   AlertCircle,
   Plus,
 } from "lucide-react";
-import { format } from "date-fns";
 
 const brand = {
   primary: "#156372",
@@ -32,6 +32,21 @@ interface ChartOfAccountsDetailViewProps {
   onOpenTransactionReport: () => void;
 }
 
+type AccountTransaction = {
+  _id?: string;
+  id?: string | number;
+  date: string;
+  description?: string;
+  reference?: string;
+  sourceType?: string;
+  type?: string;
+  lines?: Array<{
+    account?: any;
+    debit?: number | string;
+    credit?: number | string;
+  }>;
+};
+
 export function ChartOfAccountsDetailView({
   selectedAccount,
   accounts,
@@ -41,6 +56,9 @@ export function ChartOfAccountsDetailView({
   onOpenTransactionReport,
 }: ChartOfAccountsDetailViewProps) {
   const currencyLabel = "USD";
+  const balance = Number(selectedAccount?.balance || 0);
+  const balanceSuffix = balance < 0 ? "Cr" : "Dr";
+  const isTransactionsLoading = false;
 
   const formatMoney = (value: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -49,7 +67,7 @@ export function ChartOfAccountsDetailView({
     }).format(value || 0);
   };
 
-  const accountTransactions = useMemo(() => {
+  const accountTransactions = useMemo<AccountTransaction[]>(() => {
     return selectedAccount?.transactions || [];
   }, [selectedAccount]);
 
@@ -71,7 +89,7 @@ export function ChartOfAccountsDetailView({
     );
   }, [accountTransactions, selectedAccount]);
 
-  const formatTransactionSourceType = (type: string) => {
+  const formatTransactionSourceType = (type?: string) => {
     if (!type) return "Transaction";
     return type
       .split("_")
@@ -437,11 +455,14 @@ export function ChartOfAccountsDetailView({
             </div>
           </div>
 
-          {isTransactionsLoading ? (
+          {isTransactionsLoading && (
             <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
               <Loader2 className="animate-spin" size={28} color="#156372" />
             </div>
-          ) : accountTransactions.length === 0 ? (
+          )}
+
+          {!isTransactionsLoading && accountTransactions.length === 0 && (
+            <>
             <div
               style={{
                 backgroundColor: brand.white,
@@ -470,7 +491,7 @@ export function ChartOfAccountsDetailView({
                   color: brand.text,
                 }}
               >
-                {currencyLabel} {formatMoney(selectedAccount.balance)}
+                {currencyLabel} {formatMoney(Math.abs(balance))} ({balanceSuffix})
               </div>
             </div>
 
@@ -537,9 +558,11 @@ export function ChartOfAccountsDetailView({
                 {selectedAccount.code}
               </div>
             </div>
-          </div>
+            </>
+          )}
 
-          {/* Transactions Table Section */}
+          {!isTransactionsLoading && accountTransactions.length > 0 && (
+
           <section
             style={{
               backgroundColor: brand.white,
@@ -619,7 +642,7 @@ export function ChartOfAccountsDetailView({
                     </thead>
 
                     <tbody>
-                      {accountTransactions.map((transaction, index) => {
+                      {accountTransactions.map((transaction: AccountTransaction, index: number) => {
                         const line = getAccountLine(transaction, selectedAccount);
 
                         return (
@@ -672,7 +695,7 @@ export function ChartOfAccountsDetailView({
                               }}
                             >
                               {formatTransactionSourceType(
-                                transaction.sourceType || transaction.type,
+                                transaction.sourceType ?? transaction.type ?? "",
                               )}
                             </td>
 
@@ -773,6 +796,7 @@ export function ChartOfAccountsDetailView({
               </>
             )}
           </section>
+          )}
         </div>
       </main>
     </div>

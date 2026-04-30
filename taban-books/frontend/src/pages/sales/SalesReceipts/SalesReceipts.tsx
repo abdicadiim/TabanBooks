@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
 import LoadingSpinner from "../../../components/LoadingSpinner";
-import { getSalesReceipts, deleteSalesReceipt, updateSalesReceipt, getSalesReceiptById, getCustomers, getSalespersons, getTaxes, getProjects, getItemsFromAPI, getCustomViews, deleteCustomView } from "../salesModel";
+import { getSalesReceipts, deleteSalesReceipt, updateSalesReceipt, getSalesReceiptById, getCustomers, getSalespersons, getTaxes, getProjects, getItemsFromAPI, getCustomViews, deleteCustomView, type SalesReceipt, type Customer, type Salesperson, type Project, type Tax, type CustomView } from "../salesModel";
 // import { sampleItems } from "../../items/itemsModel";
 import { toast } from "react-hot-toast";
 import html2canvas from "html2canvas";
@@ -43,6 +43,52 @@ import PaginationFooter from "../../../components/table/PaginationFooter";
 const sampleItems: any[] = [];
 const FieldCustomization: React.FC<any> = () => null;
 
+type SalesReceiptCriterion = {
+  field?: string;
+  comparator?: string;
+  value?: string;
+};
+
+type SalesReceiptBulkOption = {
+  value: string;
+  label: string;
+  customerId: string;
+  customerName: string;
+};
+
+type SalesReceiptRow = SalesReceipt & {
+  currency?: string;
+  location?: string;
+  branch?: string;
+  paymentReference?: string;
+  reference?: string;
+  paymentMode?: string;
+  paymentMethod?: string;
+  createdBy?: unknown;
+  salesperson?: unknown;
+  subTotal?: number;
+  subtotal?: number;
+  discountType?: string;
+  shippingCharges?: number;
+  shippingChargeTax?: string;
+  adjustment?: number;
+  depositTo?: unknown;
+  depositToAccount?: unknown;
+  depositToAccountId?: unknown;
+  depositAccount?: unknown;
+  paidThrough?: unknown;
+  paidThroughAccount?: unknown;
+  depositAccountName?: unknown;
+};
+
+type BulkFieldConfig = {
+  label: string;
+  type: "date" | "text" | "select" | "number";
+  placeholder?: string;
+  options?: Array<{ value: string; label: string }>;
+  buildPayload: (value: string | number) => Record<string, unknown> | null;
+};
+
 const salesReceiptViews = [
   "All",
   "Draft",
@@ -50,7 +96,7 @@ const salesReceiptViews = [
   "Void"
 ];
 
-const viewStatusMap = {
+const viewStatusMap: Record<string, string> = {
   All: "All",
   Paid: "paid",
   Draft: "draft",
@@ -147,7 +193,7 @@ export default function SalesReceipts() {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [activeSort, setActiveSort] = useState("Date (Newest First)");
   const [viewSearchQuery, setViewSearchQuery] = useState("");
-  const [customViews, setCustomViews] = useState(() => getCustomViews().filter(v => v.type === "sales-receipts"));
+  const [customViews, setCustomViews] = useState<CustomView[]>(() => getCustomViews().filter(v => v.type === "sales-receipts"));
   const [isPeriodDropdownOpen, setIsPeriodDropdownOpen] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState("All");
 
@@ -185,15 +231,15 @@ export default function SalesReceipts() {
   const [isAttentionDropdownOpen, setIsAttentionDropdownOpen] = useState(false);
 
   // Refs for advanced search dropdowns
-  const searchTypeDropdownRef = useRef(null);
-  const filterTypeDropdownRef = useRef(null);
-  const itemNameDropdownRef = useRef(null);
-  const accountDropdownRef = useRef(null);
-  const customerDropdownRef = useRef(null);
-  const paymentMethodDropdownRef = useRef(null);
-  const salespersonDropdownRef = useRef(null);
-  const taxDropdownRef = useRef(null);
-  const attentionDropdownRef = useRef(null);
+  const searchTypeDropdownRef = useRef<HTMLDivElement | null>(null);
+  const filterTypeDropdownRef = useRef<HTMLDivElement | null>(null);
+  const itemNameDropdownRef = useRef<HTMLDivElement | null>(null);
+  const accountDropdownRef = useRef<HTMLDivElement | null>(null);
+  const customerDropdownRef = useRef<HTMLDivElement | null>(null);
+  const paymentMethodDropdownRef = useRef<HTMLDivElement | null>(null);
+  const salespersonDropdownRef = useRef<HTMLDivElement | null>(null);
+  const taxDropdownRef = useRef<HTMLDivElement | null>(null);
+  const attentionDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const [isBulkUpdateModalOpen, setIsBulkUpdateModalOpen] = useState(false);
   const [bulkUpdateField, setBulkUpdateField] = useState("");
@@ -203,28 +249,29 @@ export default function SalesReceipts() {
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [pendingBulkDeleteIds, setPendingBulkDeleteIds] = useState<string[]>([]);
 
-  const [salesReceipts, setSalesReceipts] = useState([]);
-  const [filteredSalesReceipts, setFilteredSalesReceipts] = useState([]);
-  const [selectedReceipts, setSelectedReceipts] = useState([]);
-  const [customers, setCustomers] = useState([]);
+  const [salesReceipts, setSalesReceipts] = useState<SalesReceiptRow[]>([]);
+  const [filteredSalesReceipts, setFilteredSalesReceipts] = useState<SalesReceiptRow[]>([]);
+  const [selectedReceipts, setSelectedReceipts] = useState<string[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
   useEffect(() => {
     localStorage.setItem(SALES_RECEIPTS_COLUMNS_STORAGE_KEY, JSON.stringify(visibleColumns));
   }, [visibleColumns]);
-  const [salespersons, setSalespersons] = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [taxes, setTaxes] = useState([]);
+  const [salespersons, setSalespersons] = useState<Salesperson[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [taxes, setTaxes] = useState<Tax[]>([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 50, pages: 0 });
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const receiptQueryParams = useMemo(() => {
     const sortField = mapSortOptionToField(activeSort);
+    const sortOrder: "asc" | "desc" = isSortDescendingOption(activeSort) ? "desc" : "asc";
     return {
       page: currentPage,
       limit: itemsPerPage,
       status: selectedStatus === "All" ? undefined : selectedStatus,
       sortBy: sortField,
-      sortOrder: isSortDescendingOption(activeSort) ? "desc" : "asc",
+      sortOrder,
     };
   }, [activeSort, currentPage, itemsPerPage, selectedStatus]);
   const salesReceiptsQuery = useSalesReceiptsListQuery(receiptQueryParams);
@@ -269,8 +316,8 @@ export default function SalesReceipts() {
     .trim()
     .replace(/\w\S*/g, (text) => text.charAt(0).toUpperCase() + text.slice(1).toLowerCase());
 
-  const customerBulkOptions = useMemo<{ value: string; label: string; customerId: string; customerName: string }[]>(() => {
-    const optionsMap = new Map();
+  const customerBulkOptions = useMemo<SalesReceiptBulkOption[]>(() => {
+    const optionsMap = new Map<string, SalesReceiptBulkOption>();
 
     (customers || []).forEach((customer) => {
       const customerId = String(customer?.id || customer?._id || "").trim();
@@ -371,12 +418,12 @@ export default function SalesReceipts() {
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [salesReceipts]);
 
-  const bulkFieldConfigs = useMemo(() => ([
+  const bulkFieldConfigs = useMemo<BulkFieldConfig[]>(() => ([
     {
       label: "Receipt Date",
       type: "date",
       placeholder: "Select receipt date",
-      buildPayload: (value) => {
+      buildPayload: (value: string | number) => {
         const parsedDate = new Date(value);
         if (Number.isNaN(parsedDate.getTime())) return null;
         const isoDate = parsedDate.toISOString();
@@ -387,16 +434,16 @@ export default function SalesReceipts() {
       label: "Reference Number",
       type: "text",
       placeholder: "Enter reference number",
-      buildPayload: (value) => ({ referenceNumber: value, paymentReference: value })
+      buildPayload: (value: string | number) => ({ referenceNumber: value, paymentReference: value })
     },
     {
       label: "Customer Name",
       type: "select",
       options: customerBulkOptions,
-      buildPayload: (value) => {
+      buildPayload: (value: string | number) => {
         const selectedOption = customerBulkOptions.find((option) => option.value === value);
         if (!selectedOption) return null;
-        const payload: any = { customerName: selectedOption.customerName };
+        const payload: Record<string, unknown> = { customerName: selectedOption.customerName };
         if (selectedOption.customerId) {
           payload.customer = selectedOption.customerId;
           payload.customerId = selectedOption.customerId;
@@ -408,7 +455,7 @@ export default function SalesReceipts() {
       label: "Payment Mode",
       type: "select",
       options: paymentModeBulkOptions,
-      buildPayload: (value) => ({
+      buildPayload: (value: string | number) => ({
         paymentMode: value,
         paymentMethod: String(value || "").trim().toLowerCase().replace(/\s+/g, "_")
       })
@@ -417,55 +464,55 @@ export default function SalesReceipts() {
       label: "Status",
       type: "select",
       options: statusBulkOptions,
-      buildPayload: (value) => ({ status: normalizeSalesReceiptStatus(value) })
+      buildPayload: (value: string | number) => ({ status: normalizeSalesReceiptStatus(value) })
     },
     {
       label: "Currency",
       type: "select",
       options: currencyBulkOptions,
-      buildPayload: (value) => ({ currency: String(value || "").trim().toUpperCase() })
+      buildPayload: (value: string | number) => ({ currency: String(value || "").trim().toUpperCase() })
     },
     {
       label: "Salesperson",
       type: "select",
       options: salespersonBulkOptions,
-      buildPayload: (value) => ({ salesperson: String(value || "").trim() })
+      buildPayload: (value: string | number) => ({ salesperson: String(value || "").trim() })
     },
     {
       label: "Created By",
       type: "text",
       placeholder: "Enter creator name",
-      buildPayload: (value) => ({ createdBy: value })
+      buildPayload: (value: string | number) => ({ createdBy: value })
     },
     {
       label: "Tax",
       type: "number",
       placeholder: "0.00",
-      buildPayload: (value) => ({ tax: value })
+      buildPayload: (value: string | number) => ({ tax: value })
     },
     {
       label: "Discount",
       type: "number",
       placeholder: "0.00",
-      buildPayload: (value) => ({ discount: value })
+      buildPayload: (value: string | number) => ({ discount: value })
     },
     {
       label: "Shipping Charges",
       type: "number",
       placeholder: "0.00",
-      buildPayload: (value) => ({ shippingCharges: value })
+      buildPayload: (value: string | number) => ({ shippingCharges: value })
     },
     {
       label: "Adjustment",
       type: "number",
       placeholder: "0.00",
-      buildPayload: (value) => ({ adjustment: value })
+      buildPayload: (value: string | number) => ({ adjustment: value })
     },
     {
       label: "Amount",
       type: "number",
       placeholder: "0.00",
-      buildPayload: (value) => ({ amount: value, total: value })
+      buildPayload: (value: string | number) => ({ amount: value, total: value })
     }
   ]), [currencyBulkOptions, customerBulkOptions, paymentModeBulkOptions, salespersonBulkOptions, statusBulkOptions]);
 
@@ -522,45 +569,46 @@ export default function SalesReceipts() {
   }, [salesReceiptsQuery.refetch]);
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (viewDropdownRef.current && !viewDropdownRef.current.contains(event.target)) {
+  const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (viewDropdownRef.current && !viewDropdownRef.current.contains(target)) {
         setIsViewDropdownOpen(false);
       }
-      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(target)) {
         setIsMoreMenuOpen(false);
         setIsSortMenuOpen(false);
       }
-      if (periodDropdownRef.current && !periodDropdownRef.current.contains(event.target)) {
+      if (periodDropdownRef.current && !periodDropdownRef.current.contains(target)) {
         setIsPeriodDropdownOpen(false);
       }
-      if (bulkUpdateFieldDropdownRef.current && !bulkUpdateFieldDropdownRef.current.contains(event.target)) {
+      if (bulkUpdateFieldDropdownRef.current && !bulkUpdateFieldDropdownRef.current.contains(target)) {
         setIsBulkUpdateFieldDropdownOpen(false);
       }
-      if (searchTypeDropdownRef.current && !searchTypeDropdownRef.current.contains(event.target)) {
+      if (searchTypeDropdownRef.current && !searchTypeDropdownRef.current.contains(target)) {
         setIsSearchTypeDropdownOpen(false);
       }
-      if (filterTypeDropdownRef.current && !filterTypeDropdownRef.current.contains(event.target)) {
+      if (filterTypeDropdownRef.current && !filterTypeDropdownRef.current.contains(target)) {
         setIsFilterTypeDropdownOpen(false);
       }
-      if (itemNameDropdownRef.current && !itemNameDropdownRef.current.contains(event.target)) {
+      if (itemNameDropdownRef.current && !itemNameDropdownRef.current.contains(target)) {
         setIsItemNameDropdownOpen(false);
       }
-      if (accountDropdownRef.current && !accountDropdownRef.current.contains(event.target)) {
+      if (accountDropdownRef.current && !accountDropdownRef.current.contains(target)) {
         setIsAccountDropdownOpen(false);
       }
-      if (customerDropdownRef.current && !customerDropdownRef.current.contains(event.target)) {
+      if (customerDropdownRef.current && !customerDropdownRef.current.contains(target)) {
         setIsCustomerDropdownOpen(false);
       }
-      if (paymentMethodDropdownRef.current && !paymentMethodDropdownRef.current.contains(event.target)) {
+      if (paymentMethodDropdownRef.current && !paymentMethodDropdownRef.current.contains(target)) {
         setIsPaymentMethodDropdownOpen(false);
       }
-      if (salespersonDropdownRef.current && !salespersonDropdownRef.current.contains(event.target)) {
+      if (salespersonDropdownRef.current && !salespersonDropdownRef.current.contains(target)) {
         setIsSalespersonDropdownOpen(false);
       }
-      if (taxDropdownRef.current && !taxDropdownRef.current.contains(event.target)) {
+      if (taxDropdownRef.current && !taxDropdownRef.current.contains(target)) {
         setIsTaxDropdownOpen(false);
       }
-      if (attentionDropdownRef.current && !attentionDropdownRef.current.contains(event.target)) {
+      if (attentionDropdownRef.current && !attentionDropdownRef.current.contains(target)) {
         setIsAttentionDropdownOpen(false);
       }
     };
@@ -575,7 +623,7 @@ export default function SalesReceipts() {
   }, [isViewDropdownOpen, isMoreMenuOpen, isSortMenuOpen, isPeriodDropdownOpen, isBulkUpdateFieldDropdownOpen]);
 
   useEffect(() => {
-    const handleKeyDown = (event) => {
+  const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && selectedReceipts.length > 0) {
         setSelectedReceipts([]);
       }
@@ -586,8 +634,8 @@ export default function SalesReceipts() {
     };
   }, [selectedReceipts]);
 
-  const getSalesReceiptFieldValue = (receipt, fieldName) => {
-    const fieldMap = {
+  const getSalesReceiptFieldValue = (receipt: SalesReceiptRow, fieldName: string) => {
+    const fieldMap: Record<string, string | number> = {
       "Date": receipt.receiptDate || receipt.date || "",
       "Receipt Number": receipt.receiptNumber || receipt.id || "",
       "Reference Number": receipt.referenceNumber || "",
@@ -600,7 +648,7 @@ export default function SalesReceipts() {
     return fieldMap[fieldName] !== undefined ? fieldMap[fieldName] : "";
   };
 
-  const evaluateCriterion = (fieldValue, comparator, value) => {
+  const evaluateCriterion = (fieldValue: unknown, comparator: string, value: string) => {
     const fieldStr = String(fieldValue || "").toLowerCase();
     const valueStr = String(value || "").toLowerCase();
 
@@ -618,15 +666,16 @@ export default function SalesReceipts() {
     }
   };
 
-  const applyFilters = useCallback((allReceipts, status, views = customViews, sortOption = activeSort) => {
-    let filtered = Array.isArray(allReceipts) ? allReceipts : [];
+  const applyFilters = useCallback((allReceipts: SalesReceiptRow[], status: string, views: CustomView[] = customViews, sortOption: string = activeSort) => {
+    let filtered: SalesReceiptRow[] = Array.isArray(allReceipts) ? allReceipts : [];
 
     // Check if it's a custom view
     const normalizedStatus = String(status || "").trim();
-    const customView = ["All", "Paid", "Draft", "Void"].includes(normalizedStatus) ? null : views.find(v => v.name === status);
-    if (customView && customView.criteria) {
-      filtered = filtered.filter(receipt => {
-        return customView.criteria.every(criterion => {
+    const customView = ["All", "Paid", "Draft", "Void"].includes(normalizedStatus) ? null : views.find((v) => v.name === status);
+    if (customView) {
+      const criteria = customView.criteria ?? [];
+      filtered = filtered.filter((receipt) => {
+        return criteria.every((criterion: SalesReceiptCriterion) => {
           if (!criterion.field || !criterion.comparator) return true;
           const fieldValue = getSalesReceiptFieldValue(receipt, criterion.field);
           return evaluateCriterion(fieldValue, criterion.comparator, criterion.value);
@@ -644,10 +693,10 @@ export default function SalesReceipts() {
     const sorted = [...filtered];
     switch (sortOption) {
       case "Date (Newest First)":
-        sorted.sort((a, b) => new Date(b.date || b.receiptDate).getTime() - new Date(a.date || a.receiptDate).getTime());
+        sorted.sort((a, b) => new Date(b.date || b.receiptDate || 0).getTime() - new Date(a.date || a.receiptDate || 0).getTime());
         break;
       case "Date (Oldest First)":
-        sorted.sort((a, b) => new Date(a.date || a.receiptDate).getTime() - new Date(b.date || b.receiptDate).getTime());
+        sorted.sort((a, b) => new Date(a.date || a.receiptDate || 0).getTime() - new Date(b.date || b.receiptDate || 0).getTime());
         break;
       case "Receipt # (Ascending)":
         sorted.sort((a, b) => (a.receiptNumber || "").localeCompare(b.receiptNumber || ""));
@@ -687,7 +736,7 @@ export default function SalesReceipts() {
     setIsRefreshing(salesReceiptsQuery.isFetching);
   }, [salesReceiptsQuery.isFetching]);
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: string | undefined | null) => {
     if (!dateString) return "-";
     try {
       // Handle both ISO date strings and formatted date strings (e.g., "13 Dec 2025")
@@ -725,12 +774,12 @@ export default function SalesReceipts() {
     }
   };
 
-  const formatCurrency = (amount, currency = "AMD") => {
+  const formatCurrency = (amount: string | number | undefined, currency = "AMD") => {
     const numAmount = parseFloat(amount) || 0;
     return `${currency}${numAmount.toFixed(2)}`;
   };
 
-  const getCustomerDisplayName = (receipt) => {
+  const getCustomerDisplayName = (receipt: SalesReceiptRow) => {
     if (receipt?.customerName) return String(receipt.customerName);
     if (typeof receipt?.customer === "string") return receipt.customer;
     if (receipt?.customer && typeof receipt.customer === "object") {
@@ -739,7 +788,7 @@ export default function SalesReceipts() {
     return "Customer";
   };
 
-  const getCreatedByDisplayName = (receipt) => {
+  const getCreatedByDisplayName = (receipt: SalesReceiptRow) => {
     if (!receipt?.createdBy) return "System";
     if (typeof receipt.createdBy === "string") return receipt.createdBy;
     if (typeof receipt.createdBy === "object") {
@@ -748,11 +797,11 @@ export default function SalesReceipts() {
     return String(receipt.createdBy);
   };
 
-  const getReferenceDisplay = (receipt) => {
+  const getReferenceDisplay = (receipt: Partial<SalesReceiptRow>) => {
     return receipt?.paymentReference || receipt?.referenceNumber || receipt?.reference || "—";
   };
 
-  const pickFirstNonEmpty = (...values) => {
+  const pickFirstNonEmpty = (...values: unknown[]) => {
     for (const value of values) {
       if (value === 0 || value === "0") return value;
       if (value !== undefined && value !== null && String(value).trim() !== "") return value;
@@ -760,9 +809,9 @@ export default function SalesReceipts() {
     return "";
   };
 
-  const normalizeAccountRef = (value) => {
+  const normalizeAccountRef = (value: unknown) => {
     if (!value) return "";
-    if (typeof value === "string" || typeof value === "number") return value;
+    if (typeof value === "string" || typeof value === "number") return String(value);
     if (typeof value === "object") {
       return pickFirstNonEmpty(
         value._id,
@@ -777,12 +826,12 @@ export default function SalesReceipts() {
     return "";
   };
 
-  const toFiniteNumber = (value, fallback = 0) => {
+  const toFiniteNumber = (value: unknown, fallback = 0) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
   };
 
-  const normalizeItemRef = (value) => {
+  const normalizeItemRef = (value: unknown) => {
     if (!value) return "";
     if (typeof value === "string" || typeof value === "number") return String(value);
     if (typeof value === "object") {
@@ -791,7 +840,7 @@ export default function SalesReceipts() {
     return "";
   };
 
-  const normalizeReceiptItemsForUpdate = (items = [], itemCatalog = []) => {
+  const normalizeReceiptItemsForUpdate = (items: any[] = [], itemCatalog: any[] = []) => {
     if (!Array.isArray(items)) return [];
 
     return items.map((line) => {
@@ -846,7 +895,7 @@ export default function SalesReceipts() {
     });
   };
 
-  const buildBulkUpdatePayload = (baseReceipt, changes, itemCatalog = []) => {
+  const buildBulkUpdatePayload = (baseReceipt: SalesReceiptRow, changes: Record<string, unknown>, itemCatalog: any[] = []) => {
     const nextPayload = ensureDepositToFields(baseReceipt, changes);
     const normalizedItems = normalizeReceiptItemsForUpdate(baseReceipt?.items || [], itemCatalog);
 
@@ -902,7 +951,7 @@ export default function SalesReceipts() {
     return nextPayload;
   };
 
-  const ensureDepositToFields = (baseReceipt, payload) => {
+  const ensureDepositToFields = (baseReceipt: SalesReceiptRow, payload: Record<string, unknown>) => {
     const nextPayload = { ...payload };
 
     const existingDepositToAccount = normalizeAccountRef(
@@ -943,47 +992,53 @@ export default function SalesReceipts() {
   };
 
   const handleAdvancedSearchSubmit = async () => {
-    let allReceipts = await getSalesReceipts();
-    let filtered = Array.isArray(allReceipts) ? allReceipts : [];
+    let allReceipts: SalesReceiptRow[] = await getSalesReceipts();
+    let filtered: SalesReceiptRow[] = Array.isArray(allReceipts) ? allReceipts : [];
 
     if (advancedSearchData.receiptNumber) {
-      filtered = filtered.filter(r =>
+      filtered = filtered.filter((r) =>
         (r.receiptNumber || r.id || "").toLowerCase().includes(advancedSearchData.receiptNumber.toLowerCase())
       );
     }
 
     if (advancedSearchData.referenceNumber) {
-      filtered = filtered.filter(r =>
+      filtered = filtered.filter((r) =>
         (r.referenceNumber || "").toLowerCase().includes(advancedSearchData.referenceNumber.toLowerCase())
       );
     }
 
     if (advancedSearchData.customerName) {
-      filtered = filtered.filter(r =>
+      filtered = filtered.filter((r) =>
         (r.customerName || r.customer || "").toLowerCase().includes(advancedSearchData.customerName.toLowerCase())
       );
     }
 
     if (advancedSearchData.dateRangeFrom) {
       const fromDate = new Date(advancedSearchData.dateRangeFrom);
-      filtered = filtered.filter(r => new Date(r.date || r.receiptDate) >= fromDate);
+      filtered = filtered.filter((r) => {
+        const receiptDate = r.date || r.receiptDate;
+        return receiptDate ? new Date(receiptDate) >= fromDate : false;
+      });
     }
 
     if (advancedSearchData.dateRangeTo) {
       const toDate = new Date(advancedSearchData.dateRangeTo);
-      filtered = filtered.filter(r => new Date(r.date || r.receiptDate) <= toDate);
+      filtered = filtered.filter((r) => {
+        const receiptDate = r.date || r.receiptDate;
+        return receiptDate ? new Date(receiptDate) <= toDate : false;
+      });
     }
 
     if (advancedSearchData.totalRangeFrom) {
-      filtered = filtered.filter(r => parseFloat(String(r.total || r.amount || 0)) >= parseFloat(String(advancedSearchData.totalRangeFrom)));
+      filtered = filtered.filter((r) => parseFloat(String(r.total || r.amount || 0)) >= parseFloat(String(advancedSearchData.totalRangeFrom)));
     }
 
     if (advancedSearchData.totalRangeTo) {
-      filtered = filtered.filter(r => parseFloat(String(r.total || r.amount || 0)) <= parseFloat(String(advancedSearchData.totalRangeTo)));
+      filtered = filtered.filter((r) => parseFloat(String(r.total || r.amount || 0)) <= parseFloat(String(advancedSearchData.totalRangeTo)));
     }
 
     if (advancedSearchData.filterType && advancedSearchData.filterType !== "All") {
-      filtered = filtered.filter(r => normalizeSalesReceiptStatus(r.status) === normalizeSalesReceiptStatus(advancedSearchData.filterType));
+      filtered = filtered.filter((r) => normalizeSalesReceiptStatus(r.status) === normalizeSalesReceiptStatus(advancedSearchData.filterType));
     }
 
     setFilteredSalesReceipts(filtered);
@@ -1014,7 +1069,7 @@ export default function SalesReceipts() {
     setFilteredSalesReceipts(await getSalesReceipts());
   };
 
-  const handleStatusFilter = (status) => {
+  const handleStatusFilter = (status: string) => {
     const mappedStatus = viewStatusMap[status] || status;
     setSelectedStatus(mappedStatus);
     setIsViewDropdownOpen(false);
@@ -1030,7 +1085,7 @@ export default function SalesReceipts() {
     navigate("/sales/sales-receipts/custom-view/new");
   };
 
-  const handleDeleteCustomView = (viewId, e) => {
+  const handleDeleteCustomView = (viewId: string, e: React.MouseEvent<HTMLDivElement | HTMLButtonElement>) => {
     e.stopPropagation();
     const viewToDelete = customViews.find(v => v.id === viewId);
     if (viewToDelete && window.confirm(`Are you sure you want to delete the custom view "${viewToDelete.name}"?`)) {
@@ -1043,15 +1098,15 @@ export default function SalesReceipts() {
     }
   };
 
-  const filteredDefaultViews = salesReceiptViews.filter(view =>
+  const filteredDefaultViews = salesReceiptViews.filter((view) =>
     view.toLowerCase().includes(viewSearchQuery.toLowerCase())
   );
 
-  const filteredCustomViews = customViews.filter(view =>
+  const filteredCustomViews = customViews.filter((view) =>
     view.name.toLowerCase().includes(viewSearchQuery.toLowerCase())
   );
 
-  const isViewSelected = (view) => {
+  const isViewSelected = (view: string) => {
     if (view === "All") return selectedView === "All Sales Receipts";
     return selectedView === view;
   };
@@ -1064,7 +1119,7 @@ export default function SalesReceipts() {
     navigate("/sales/sales-receipts/import");
   };
 
-  const handleSort = (option) => {
+  const handleSort = (option: string) => {
     setActiveSort(option);
     applyFilters(salesReceipts, selectedStatus, customViews, option);
   };
@@ -1077,7 +1132,7 @@ export default function SalesReceipts() {
       setSalesReceipts(allReceipts);
       applyFilters(allReceipts, selectedStatus);
       toast.success("List refreshed successfully.");
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Error refreshing list:", error);
     } finally {
       setIsRefreshing(false);
@@ -1090,7 +1145,7 @@ export default function SalesReceipts() {
     toast.success("Column widths have been reset to default.");
   };
 
-  const getSalesReceiptPdfTemplate = (receipt) => {
+  const getSalesReceiptPdfTemplate = (receipt: SalesReceiptRow) => {
     const items = Array.isArray(receipt?.items) ? receipt.items : [];
     const itemsHtml = items.length > 0
       ? items.map((item, index) => `
@@ -1178,7 +1233,7 @@ export default function SalesReceipts() {
     `;
   };
 
-  const downloadSalesReceiptsPdf = async (receipts, fileNamePrefix = "sales-receipts") => {
+  const downloadSalesReceiptsPdf = async (receipts: SalesReceiptRow[], fileNamePrefix = "sales-receipts") => {
     const receiptsToDownload = Array.isArray(receipts) ? receipts.filter(Boolean) : [];
     if (receiptsToDownload.length === 0) {
       toast.error("No sales receipts available for PDF download.");
@@ -1252,7 +1307,7 @@ export default function SalesReceipts() {
     pdf.save(`${fileNamePrefix}-${suffix}.pdf`);
   };
 
-  const handleExport = async (exportType) => {
+  const handleExport = async (exportType: string) => {
     setIsMoreMenuOpen(false);
 
     if (exportType === "Export to PDF") {
@@ -1294,7 +1349,7 @@ export default function SalesReceipts() {
     URL.revokeObjectURL(url);
   };
 
-  const handleSelectAll = (e) => {
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
       setSelectedReceipts(filteredSalesReceipts.map(receipt => receipt.id));
     } else {
@@ -1302,9 +1357,9 @@ export default function SalesReceipts() {
     }
   };
 
-  const handleSelectReceipt = (receiptId, e) => {
+  const handleSelectReceipt = (receiptId: string, e: React.ChangeEvent<HTMLInputElement> | React.MouseEvent) => {
     e.stopPropagation();
-    setSelectedReceipts(prev => {
+    setSelectedReceipts((prev) => {
       if (prev.includes(receiptId)) {
         return prev.filter(id => id !== receiptId);
       } else {
@@ -1363,7 +1418,7 @@ export default function SalesReceipts() {
     setBulkUpdateValue("");
   };
 
-  const handleBulkUpdateFieldSelect = (field) => {
+  const handleBulkUpdateFieldSelect = (field: string) => {
     setBulkUpdateField(field);
     setBulkUpdateValue("");
     setIsBulkUpdateFieldDropdownOpen(false);

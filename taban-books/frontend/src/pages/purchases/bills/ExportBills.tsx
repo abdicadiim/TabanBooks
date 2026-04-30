@@ -59,7 +59,7 @@ const MODULE_CATEGORIES = [
   }
 ];
 
-export default function ExportBills({ onClose, exportType = "bills", defaultModule = "Bills", data = [] }) {
+export default function ExportBills({ onClose, exportType = "bills", defaultModule = "Bills", data = [] as any[] }) {
   const [module, setModule] = useState(
     exportType === "current-view" ? `${defaultModule} (Current View)` : defaultModule
   );
