@@ -1595,7 +1595,7 @@ export default function ProfilePage() {
     };
 
     if (orgName) {
-      document.title = orgName;
+      document.title = "Taban Book";
     }
 
     const persistedLiveProfile = {

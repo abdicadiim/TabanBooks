@@ -1,6 +1,7 @@
 import React from "react";
 import { useCurrency } from "../../hooks/useCurrency";
 import { HandCoins, ReceiptText, TrendingUp, Wallet } from "lucide-react";
+import { useAnimatedNumber } from "./useAnimatedNumber";
 
 interface OverdueBreakdown {
   "1-15": number;
@@ -25,8 +26,10 @@ function AmountCard({
   tag,
   subtitleA,
   valueA,
+  countA,
   subtitleB,
   valueB,
+  countB,
   icon,
 }: {
   title: string;
@@ -34,8 +37,10 @@ function AmountCard({
   tag: string;
   subtitleA: string;
   valueA: number;
+  countA: number;
   subtitleB: string;
   valueB: number;
+  countB: number;
   icon: React.ReactNode;
 }) {
   const { formatMoney } = useCurrency();
@@ -55,55 +60,54 @@ function AmountCard({
       </div>
 
       <div className="mt-3.5 grid grid-cols-2 gap-2 text-[10px]">
-        <div className="text-[#5d7e86]">{subtitleA}</div>
+        <div className="flex items-center gap-1 text-[#5d7e86]">
+          <span>{subtitleA}</span>
+          <span className="rounded-full bg-[#edf5f6] px-1.5 py-0.5 text-[9px] font-semibold text-[#156372]">
+            {countA}
+          </span>
+        </div>
         <div className="text-right font-semibold text-slate-700">{formatMoney(valueA)}</div>
-        <div className="text-[#e15656]">{subtitleB}</div>
+        <div className="flex items-center gap-1 text-[#e15656]">
+          <span>{subtitleB}</span>
+          <span className="rounded-full bg-[#fff1f1] px-1.5 py-0.5 text-[9px] font-semibold text-[#e15656]">
+            {countB}
+          </span>
+        </div>
         <div className="text-right font-semibold text-[#e15656]">{formatMoney(valueB)}</div>
       </div>
     </div>
   );
 }
 
-function ValueCard({ title, value, subtitle, positive = true, icon }: { title: string; value: string; subtitle?: string; positive?: boolean; icon: React.ReactNode }) {
+function ValueCard({
+  title,
+  value,
+  subtitle,
+  positive = true,
+  icon,
+}: {
+  title: string;
+  value: string;
+  subtitle?: string;
+  positive?: boolean;
+  icon: React.ReactNode;
+}) {
   return (
     <div className="rounded-xl border border-[#b9d4d8] bg-white p-4 min-h-[148px]">
       <div className="w-8 h-8 rounded-lg bg-[#e8f2f4] text-[#156372] flex items-center justify-center">{icon}</div>
       <div className="mt-3 text-[12px] text-[#55757c] font-medium">{title}</div>
       <div className="text-[24px] leading-none mt-1.5 font-semibold text-slate-900 tracking-tight">{value}</div>
-      {subtitle && (
+      {subtitle ? (
         <div className={`mt-3.5 text-[10px] font-medium ${positive ? "text-[#4f9157]" : "text-[#d65b5b]"}`}>
           {subtitle}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
 
 export default function KpiRow(props: { data: any; loading: boolean }) {
   const { formatMoney } = useCurrency();
-
-  if (props.loading) {
-    return (
-      <div className="mb-1 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="rounded-xl border border-[#b9d4d8] bg-white p-4 min-h-[148px] animate-pulse">
-            <div className="flex items-center justify-between">
-              <div className="w-8 h-8 rounded-lg bg-[#e8f2f4]" />
-              <div className="h-5 w-20 rounded-full bg-[#edf5f6]" />
-            </div>
-            <div className="mt-3 h-4 w-32 rounded bg-[#edf5f6]" />
-            <div className="mt-3 h-9 w-36 rounded bg-[#edf5f6]" />
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <div className="h-3 w-24 rounded bg-[#edf5f6]" />
-              <div className="h-3 w-16 justify-self-end rounded bg-[#edf5f6]" />
-              <div className="h-3 w-20 rounded bg-[#edf5f6]" />
-              <div className="h-3 w-16 justify-self-end rounded bg-[#edf5f6]" />
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
 
   const defaultData: KpiData = {
     balance: 0,
@@ -119,41 +123,58 @@ export default function KpiRow(props: { data: any; loading: boolean }) {
   const operatingMargin = Number(props.data?.profitLoss?.operatingMargin || 0);
   const operatingCash = Number(props.data?.cashFlow?.operatingCashFlow || 0);
 
+  const animatedArBalance = useAnimatedNumber(ar.balance, { duration: 1100, decimals: 2 });
+  const animatedArCurrent = useAnimatedNumber(ar.current, { duration: 1100, decimals: 2 });
+  const animatedArOverdue = useAnimatedNumber(ar.overdue, { duration: 1100, decimals: 2 });
+  const animatedArCurrentCount = useAnimatedNumber(ar.currentCount, { duration: 950 });
+  const animatedArOverdueCount = useAnimatedNumber(ar.overdueCount, { duration: 950 });
+  const animatedApBalance = useAnimatedNumber(ap.balance, { duration: 1100, decimals: 2 });
+  const animatedApCurrent = useAnimatedNumber(ap.current, { duration: 1100, decimals: 2 });
+  const animatedApOverdue = useAnimatedNumber(ap.overdue, { duration: 1100, decimals: 2 });
+  const animatedApCurrentCount = useAnimatedNumber(ap.currentCount, { duration: 950 });
+  const animatedApOverdueCount = useAnimatedNumber(ap.overdueCount, { duration: 950 });
+  const animatedOperatingMargin = useAnimatedNumber(operatingMargin, { duration: 1000, decimals: 1 });
+  const animatedOperatingCash = useAnimatedNumber(operatingCash, { duration: 1100, decimals: 2 });
+
   return (
-      <div className="mb-1 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+    <div className="mb-1 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
       <AmountCard
         title="Total Receivables"
-        amount={ar.balance}
+        amount={animatedArBalance}
         tag="RECEIVABLE"
         subtitleA="Unpaid Invoices"
-        valueA={ar.current}
+        valueA={animatedArCurrent}
+        countA={Math.round(animatedArCurrentCount)}
         subtitleB="Overdue"
-        valueB={ar.overdue}
+        valueB={animatedArOverdue}
+        countB={Math.round(animatedArOverdueCount)}
         icon={<HandCoins size={16} />}
       />
 
       <AmountCard
         title="Total Payables"
-        amount={ap.balance}
+        amount={animatedApBalance}
         tag="PAYABLE"
         subtitleA="Unpaid Bills"
-        valueA={ap.current}
+        valueA={animatedApCurrent}
+        countA={Math.round(animatedApCurrentCount)}
         subtitleB="Overdue"
-        valueB={ap.overdue}
+        valueB={animatedApOverdue}
+        countB={Math.round(animatedApOverdueCount)}
         icon={<ReceiptText size={16} />}
       />
 
       <ValueCard
         title="Net Profit Margin"
-        value={`${operatingMargin.toFixed(1)}%`}
-        subtitle={`${operatingMargin >= 0 ? "?" : "?"} ${Math.abs(operatingMargin).toFixed(1)}%`}
+        value={`${animatedOperatingMargin.toFixed(1)}%`}
+        subtitle={`${operatingMargin >= 0 ? "▲" : "▼"} ${Math.abs(animatedOperatingMargin).toFixed(1)}%`}
         positive={operatingMargin >= 0}
         icon={<TrendingUp size={16} />}
       />
 
       <ValueCard
         title="Operating Cash"
-        value={formatMoney(operatingCash)}
+        value={formatMoney(animatedOperatingCash)}
         subtitle="Synced across your accounts"
         positive
         icon={<Wallet size={16} />}

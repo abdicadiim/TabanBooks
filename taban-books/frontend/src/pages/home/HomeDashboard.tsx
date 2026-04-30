@@ -40,30 +40,10 @@ function WatchlistCard({ data = [], loading = false }: { data?: any[]; loading?:
             </tr>
           </thead>
           <tbody>
-            {loading ? (
-              [0, 1, 2, 3].map((i) => (
-                <tr key={i} className="border-t border-[#eaf2f3]">
-                  <td className="px-3 py-2.5">
-                    <div className="h-3 w-28 rounded bg-[#edf5f6] animate-pulse" />
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <div className="h-3 w-20 rounded bg-[#edf5f6] animate-pulse" />
-                  </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <div className="h-3 w-16 rounded bg-[#edf5f6] animate-pulse inline-block" />
-                  </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <div className="h-3 w-12 rounded bg-[#edf5f6] animate-pulse inline-block" />
-                  </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <div className="h-3 w-4 rounded bg-[#edf5f6] animate-pulse inline-block" />
-                  </td>
-                </tr>
-              ))
-            ) : rows.length === 0 ? (
+            {rows.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-3 py-8 text-center text-[12px] text-slate-500">
-                  No accounts on watchlist. Go to Chart of Accounts to add.
+                  {loading ? "Loading watchlist..." : "No accounts on watchlist. Go to Chart of Accounts to add."}
                 </td>
               </tr>
             ) : (
@@ -86,6 +66,7 @@ function WatchlistCard({ data = [], loading = false }: { data?: any[]; loading?:
           </tbody>
         </table>
       </div>
+      {loading ? <div className="mt-2 px-1 text-right text-[10px] font-medium text-[#6f8294]">Refreshing...</div> : null}
     </section>
   );
 }
@@ -130,7 +111,7 @@ export default function HomeDashboard() {
       <div className="w-full max-w-full mx-0 px-3 md:px-4 lg:px-5 pt-2 pb-5 space-y-3 box-border">
         <HomeHeader />
 
-        <div className="rounded-2xl border border-[#b9d4d8] bg-white p-1.5 md:p-2 space-y-1.5 box-border overflow-x-hidden relative">
+        <div className="p-1.5 md:p-2 space-y-1.5 box-border overflow-x-hidden relative">
           {loading && (
             <div className="absolute inset-x-0 top-0 h-1 z-50">
               <div className="h-full bg-gradient-to-r from-[#156372] via-[#0D4A52] to-[#156372] animate-pulse" />

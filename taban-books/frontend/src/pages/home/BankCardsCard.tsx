@@ -5,35 +5,6 @@ import { Building2, CreditCard } from "lucide-react";
 export default function BankCardsCard(props: { data?: any; loading?: boolean }) {
   const { formatMoney } = useCurrency();
 
-  if (props.loading) {
-    return (
-      <section className="rounded-2xl border border-[#b9d4d8] bg-white py-1.5 px-1.5 w-full shadow-sm box-border overflow-x-hidden animate-pulse">
-        <header className="flex justify-between items-center mb-4">
-          <div className="h-6 w-32 rounded bg-[#edf5f6]" />
-        </header>
-        <div className="rounded-xl bg-[#eaf2f4] p-4">
-          <div className="h-3 w-24 rounded bg-[#d6e4e8]" />
-          <div className="mt-3 h-9 w-36 rounded bg-[#d6e4e8]" />
-          <div className="mt-2 h-3 w-40 rounded bg-[#d6e4e8]" />
-        </div>
-        <div className="mt-3 space-y-2">
-          {[0, 1].map((i) => (
-            <div key={i} className="rounded-lg border border-[#c8dce0] bg-[#f3f8f8] p-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-md bg-[#edf5f6]" />
-                <div>
-                  <div className="h-3 w-28 rounded bg-[#edf5f6]" />
-                  <div className="mt-2 h-2.5 w-24 rounded bg-[#edf5f6]" />
-                </div>
-              </div>
-              <div className="h-3 w-12 rounded bg-[#edf5f6]" />
-            </div>
-          ))}
-        </div>
-      </section>
-    );
-  }
-
   const bankData = props.data || { totalBalance: 0, accountCount: 0, activeAccounts: 0 };
   const totalBalance = Number(bankData.totalBalance || 0);
   const accountCount = Number(bankData.accountCount || 0);
@@ -83,6 +54,7 @@ export default function BankCardsCard(props: { data?: any; loading?: boolean }) 
           <div className="text-[13px] font-semibold text-slate-800">{inactiveAccounts}</div>
         </div>
       </div>
+      {props.loading ? <div className="mt-2 text-right text-[10px] font-medium text-[#6f8294]">Refreshing...</div> : null}
     </section>
   );
 }

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useCurrency } from "../../hooks/useCurrency";
 import { dashboardService } from "../../services/dashboardService";
+import { useAnimatedNumber } from "./useAnimatedNumber";
 
 interface CashFlowData {
   inflows: number;
@@ -138,7 +139,12 @@ export default function CashFlowCard({
     return { width, height, linePath: smoothLinePath, areaPath, dots, xLabels };
   }, [points]);
 
+  const chartReveal = useAnimatedNumber(chart.dots.length ? 100 : 0, { duration: 1200, decimals: 0 });
   const activePoint = chart.dots.length ? chart.dots[Math.floor(chart.dots.length * 0.7)] : null;
+  const animatedNet = useAnimatedNumber(data?.net || 0, { duration: 1100, decimals: 2 });
+  const animatedInflows = useAnimatedNumber(data?.inflows || 0, { duration: 1100, decimals: 2 });
+  const animatedOutflows = useAnimatedNumber(data?.outflows || 0, { duration: 1100, decimals: 2 });
+  const animatedOperating = useAnimatedNumber(data?.operating || 0, { duration: 1100, decimals: 2 });
 
   return (
     <section className="w-full overflow-x-hidden rounded-2xl border border-[#dfe7ee] bg-white shadow-sm">
@@ -178,16 +184,7 @@ export default function CashFlowCard({
 
       <div className="relative rounded-xl border border-[#e5ecf1] bg-[#fcfdff] p-2.5">
         <div className="rounded-lg border border-[#edf2f6] bg-white p-2.5">
-          {loading ? (
-            <div className="animate-pulse">
-              <div className="h-[250px] rounded-md bg-[#f4f8fb]" />
-              <div className="mt-2 grid grid-cols-8 gap-2">
-                {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-                  <div key={i} className="h-2 rounded bg-[#eef3f7]" />
-                ))}
-              </div>
-            </div>
-          ) : chart.dots.length ? (
+          {chart.dots.length ? (
             <>
               <div className="relative h-[250px]">
                 <svg viewBox={`0 0 ${chart.width} ${chart.height}`} className="h-full w-full">
@@ -196,26 +193,36 @@ export default function CashFlowCard({
                       <stop offset="0%" stopColor="#22c55e" stopOpacity="0.28" />
                       <stop offset="100%" stopColor="#22c55e" stopOpacity="0.05" />
                     </linearGradient>
+                    <clipPath id="cashflow-reveal">
+                      <rect
+                        x="0"
+                        y="0"
+                        width={(chart.width * Math.max(0, Math.min(100, chartReveal))) / 100}
+                        height={chart.height}
+                      />
+                    </clipPath>
                   </defs>
 
                   {[20, 72, 124, 176, 228].map((y, i) => (
                     <line key={i} x1={16} y1={y} x2={984} y2={y} stroke="#ecf1f5" strokeDasharray="4 5" />
                   ))}
 
-                  <path d={chart.areaPath} fill="url(#cashflow-fill)" />
-                  <path d={chart.linePath} fill="none" stroke="#1ac43a" strokeWidth="2.5" strokeLinecap="round" />
+                  <g clipPath="url(#cashflow-reveal)">
+                    <path d={chart.areaPath} fill="url(#cashflow-fill)" />
+                    <path d={chart.linePath} fill="none" stroke="#1ac43a" strokeWidth="2.5" strokeLinecap="round" />
 
-                  {activePoint && (
-                    <>
-                      <circle cx={activePoint.x} cy={activePoint.y} r="4.5" fill="#1ac43a" stroke="white" strokeWidth="2" />
-                      <foreignObject x={activePoint.x - 52} y={activePoint.y - 58} width="104" height="44">
-                        <div className="rounded-lg border border-[#22c55e] bg-white text-center py-1 shadow-sm">
-                          <div className="text-[10px] font-semibold text-slate-800">{formatMoney(activePoint.value)}</div>
-                          <div className="text-[9px] text-slate-500">{activePoint.name}</div>
-                        </div>
-                      </foreignObject>
-                    </>
-                  )}
+                    {activePoint ? (
+                      <>
+                        <circle cx={activePoint.x} cy={activePoint.y} r="4.5" fill="#1ac43a" stroke="white" strokeWidth="2" />
+                        <foreignObject x={activePoint.x - 52} y={activePoint.y - 58} width="104" height="44">
+                          <div className="rounded-lg border border-[#22c55e] bg-white text-center py-1 shadow-sm">
+                            <div className="text-[10px] font-semibold text-slate-800">{formatMoney(activePoint.value)}</div>
+                            <div className="text-[9px] text-slate-500">{activePoint.name}</div>
+                          </div>
+                        </foreignObject>
+                      </>
+                    ) : null}
+                  </g>
                 </svg>
               </div>
 
@@ -226,60 +233,55 @@ export default function CashFlowCard({
                   </span>
                 ))}
               </div>
+              {loading ? (
+                <div className="mt-2 text-right text-[10px] font-medium text-[#6f8294]">Refreshing live data...</div>
+              ) : null}
             </>
           ) : (
-            <div className="flex h-[240px] w-full items-center justify-center text-[11px] text-slate-500">No cash flow data</div>
+            <div className="flex h-[240px] w-full items-center justify-center text-[11px] text-slate-500">
+              {loading ? "Loading live cash flow..." : "No cash flow data"}
+            </div>
           )}
         </div>
 
         <div className="mt-3 grid grid-cols-1 overflow-hidden rounded-lg border border-[#edf2f6] text-[11px] md:grid-cols-2 xl:grid-cols-4">
-          {loading ? (
-            [0, 1, 2, 3].map((i) => (
-              <div key={i} className="border-b border-[#edf2f6] bg-white p-3 animate-pulse xl:border-b-0 xl:border-r last:border-r-0 md:last:border-b-0">
-                <div className="h-3 w-20 rounded bg-[#edf2f6]" />
-                <div className="mt-3 h-8 w-28 rounded bg-[#edf2f6]" />
-                <div className="mt-2 h-3 w-16 rounded bg-[#edf2f6]" />
+          <>
+            <div className="border-b border-[#edf2f6] bg-white p-3 xl:border-b-0 xl:border-r">
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#6c8092]">
+                <span className="inline-block w-2 h-2 rounded-full bg-[#1ac43a]" />
+                Net Cash Flow
               </div>
-            ))
-          ) : (
-            <>
-              <div className="border-b border-[#edf2f6] bg-white p-3 xl:border-b-0 xl:border-r">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#6c8092]">
-                  <span className="inline-block w-2 h-2 rounded-full bg-[#1ac43a]" />
-                  Net Cash Flow
-                </div>
-                <div className="mt-2 text-[26px] font-semibold leading-none text-slate-900">{formatMoney(data?.net || 0)}</div>
-                <div className="mt-1.5 text-[10px] font-semibold text-[#1ea84a]">+12.5%</div>
-              </div>
+              <div className="mt-2 text-[26px] font-semibold leading-none text-slate-900">{formatMoney(animatedNet)}</div>
+              <div className="mt-1.5 text-[10px] font-semibold text-[#1ea84a]">{loading ? "Refreshing..." : "Live"}</div>
+            </div>
 
-              <div className="border-b border-[#edf2f6] bg-white p-3 xl:border-b-0 xl:border-r">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#6c8092]">
-                  <span className="inline-block w-2 h-2 rounded-full bg-[#3b82f6]" />
-                  Incoming
-                </div>
-                <div className="mt-2 text-[26px] font-semibold leading-none text-slate-900">{formatMoney(data?.inflows || 0)}</div>
-                <div className="mt-1.5 text-[10px] text-[#8ea0b2]">Last 30 days total</div>
+            <div className="border-b border-[#edf2f6] bg-white p-3 xl:border-b-0 xl:border-r">
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#6c8092]">
+                <span className="inline-block w-2 h-2 rounded-full bg-[#3b82f6]" />
+                Incoming
               </div>
+              <div className="mt-2 text-[26px] font-semibold leading-none text-slate-900">{formatMoney(animatedInflows)}</div>
+              <div className="mt-1.5 text-[10px] text-[#8ea0b2]">Live total for selected period</div>
+            </div>
 
-              <div className="border-b border-[#edf2f6] bg-white p-3 md:border-b-0 xl:border-r">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#6c8092]">
-                  <span className="inline-block w-2 h-2 rounded-full bg-[#f43f5e]" />
-                  Outgoing
-                </div>
-                <div className="mt-2 text-[26px] font-semibold leading-none text-slate-900">{formatMoney(data?.outflows || 0)}</div>
-                <div className="mt-1.5 text-[10px] text-[#8ea0b2]">Last 30 days total</div>
+            <div className="border-b border-[#edf2f6] bg-white p-3 md:border-b-0 xl:border-r">
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#6c8092]">
+                <span className="inline-block w-2 h-2 rounded-full bg-[#f43f5e]" />
+                Outgoing
               </div>
+              <div className="mt-2 text-[26px] font-semibold leading-none text-slate-900">{formatMoney(animatedOutflows)}</div>
+              <div className="mt-1.5 text-[10px] text-[#8ea0b2]">Live total for selected period</div>
+            </div>
 
-              <div className="bg-white p-3">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#6c8092]">
-                  <span className="inline-block w-2 h-2 rounded-full bg-[#f59e0b]" />
-                  Operating Cash
-                </div>
-                <div className="mt-2 text-[26px] font-semibold leading-none text-slate-900">{formatMoney(data?.operating || 0)}</div>
-                <div className="mt-1.5 text-[10px] text-[#6f8294]">Real-time</div>
+            <div className="bg-white p-3">
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#6c8092]">
+                <span className="inline-block w-2 h-2 rounded-full bg-[#f59e0b]" />
+                Operating Cash
               </div>
-            </>
-          )}
+              <div className="mt-2 text-[26px] font-semibold leading-none text-slate-900">{formatMoney(animatedOperating)}</div>
+              <div className="mt-1.5 text-[10px] text-[#6f8294]">Real-time</div>
+            </div>
+          </>
         </div>
       </div>
     </section>

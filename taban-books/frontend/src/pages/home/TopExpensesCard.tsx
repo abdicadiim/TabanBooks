@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import { dashboardService } from "../../services/dashboardService";
 import { useCurrency } from "../../hooks/useCurrency";
+import { useAnimatedNumber } from "./useAnimatedNumber";
 
 const PERIOD_MAPPING: Record<string, string> = {
   "This Fiscal Year": "this-fiscal-year",
@@ -17,6 +18,22 @@ const normalizeTopExpenses = (payload: any) =>
     label: expense.category?.accountName || expense.description || "Uncategorized",
     value: Number(expense.amount || 0),
   }));
+
+function ExpenseAmount({ value }: { value: number }) {
+  const { formatMoney } = useCurrency();
+  const animatedValue = useAnimatedNumber(value, { duration: 1000, decimals: 2 });
+  return <span className="font-medium text-slate-800">{formatMoney(animatedValue)}</span>;
+}
+
+function ExpenseBar({ width }: { width: number }) {
+  const animatedWidth = useAnimatedNumber(width, { duration: 1000, decimals: 0 });
+
+  return (
+    <div className="h-1.5 rounded-full bg-[#e6f1f3] overflow-hidden">
+      <div className="h-full rounded-full bg-[#156372]" style={{ width: `${Math.max(0, Math.min(100, animatedWidth))}%` }} />
+    </div>
+  );
+}
 
 export default function TopExpensesCard({
   initialData = null,
@@ -121,36 +138,27 @@ export default function TopExpensesCard({
       </header>
 
       <div className="space-y-3 relative">
-        {loading ? (
-          <div className="animate-pulse space-y-3">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="h-3 w-28 rounded bg-[#edf5f6]" />
-                  <div className="h-3 w-16 rounded bg-[#edf5f6]" />
-                </div>
-                <div className="h-1.5 rounded-full bg-[#e6f1f3] overflow-hidden">
-                  <div className="h-full rounded-full bg-[#edf5f6]" style={{ width: `${70 - i * 12}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
+        {expenses.length ? (
           expenses.map((expense, index) => {
             const pct = Math.max(6, Math.round((expense.value / maxValue) * 100));
             return (
               <div key={`${expense.label}-${index}`}>
                 <div className="flex items-center justify-between mb-1.5 text-[12px]">
                   <span className="text-slate-700">{expense.label}</span>
-                  <span className="font-medium text-slate-800">{formatMoney(expense.value)}</span>
+                  <ExpenseAmount value={expense.value} />
                 </div>
-                <div className="h-1.5 rounded-full bg-[#e6f1f3] overflow-hidden">
-                  <div className="h-full rounded-full bg-[#156372]" style={{ width: `${pct}%` }} />
-                </div>
+                <ExpenseBar width={pct} />
               </div>
             );
           })
+        ) : (
+          <div className="py-10 text-center text-[12px] text-slate-500">
+            {loading ? "Loading top expenses..." : "No expense data"}
+          </div>
         )}
+        {loading && expenses.length ? (
+          <div className="text-right text-[10px] font-medium text-[#6f8294]">Refreshing...</div>
+        ) : null}
       </div>
     </section>
   );

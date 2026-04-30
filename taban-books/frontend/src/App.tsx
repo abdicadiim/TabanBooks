@@ -12,13 +12,12 @@ import FullScreenLoader from "./components/FullScreenLoader";
 import RetainerInvoiceQueryWarmup from "./pages/sales/RetainerInvoice/RetainerInvoiceQueryWarmup";
 import InvoiceQueryWarmup from "./pages/sales/Invoices/InvoiceQueryWarmup";
 import CreditNotesQueryWarmup from "./pages/sales/CreditNotes/CreditNotesQueryWarmup";
+import defaultLogoFavicon from "./assets/logo-DxLi_Ek_.png";
 
-const DEFAULT_TITLE = "Taban Books";
+const DEFAULT_TITLE = "Taban Book";
 const queryClient = new QueryClient();
 
-const DEFAULT_FAVICON = `data:image/svg+xml,${encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#156372"/><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-family="Arial,sans-serif" font-size="26" font-weight="700" fill="#ffffff">TB</text></svg>'
-)}`;
+const DEFAULT_FAVICON = defaultLogoFavicon;
 
 const resolveImageUrl = (value: string): string => {
   const raw = String(value || "").trim();
@@ -51,12 +50,8 @@ const setFavicon = (href: string) => {
 };
 
 const applyOrganizationBranding = (organization?: Partial<Organization> | null) => {
-  const orgName = String(organization?.name || organization?.legalName || "").trim();
-  const looksGenericBrand = /school management system|^taban_book$|^books?$|^portal$/i.test(orgName);
-  document.title = orgName && !looksGenericBrand ? orgName : DEFAULT_TITLE;
-
-  const logoUrl = resolveImageUrl(String(organization?.logo || ""));
-  setFavicon(logoUrl || DEFAULT_FAVICON);
+  document.title = DEFAULT_TITLE;
+  setFavicon(DEFAULT_FAVICON);
 };
 
 function AppBrandingSync() {

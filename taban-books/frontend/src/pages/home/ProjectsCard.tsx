@@ -4,31 +4,6 @@ import { useCurrency } from "../../hooks/useCurrency";
 export default function ProjectsCard(props: { data?: any; loading?: boolean }) {
   const { formatMoney } = useCurrency();
 
-  if (props.loading) {
-    return (
-      <section className="rounded-2xl border border-[#b9d4d8] bg-white py-1.5 px-1.5 w-full shadow-sm box-border overflow-x-hidden animate-pulse">
-        <header className="flex justify-between items-center mb-4">
-          <div className="h-6 w-40 rounded bg-[#edf5f6]" />
-          <div className="h-5 w-24 rounded-full bg-[#edf5f6]" />
-        </header>
-        <div className="rounded-xl border border-[#d7e7ea] overflow-hidden">
-          <div className="bg-[#f3f8f8] px-3 py-2 flex justify-between">
-            <div className="h-3 w-16 rounded bg-[#e6f1f3]" />
-            <div className="h-3 w-12 rounded bg-[#e6f1f3]" />
-            <div className="h-3 w-10 rounded bg-[#e6f1f3]" />
-          </div>
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="border-t border-[#eaf2f3] px-3 py-2.5 flex items-center justify-between">
-              <div className="h-3 w-28 rounded bg-[#edf5f6]" />
-              <div className="h-3 w-16 rounded bg-[#edf5f6]" />
-              <div className="h-4 w-14 rounded-full bg-[#edf5f6]" />
-            </div>
-          ))}
-        </div>
-      </section>
-    );
-  }
-
   const projects = props.data || { total: 0, active: 0, completed: 0, totalValue: 0 };
   const completionRate = projects.total > 0 ? (projects.completed / projects.total) * 100 : 0;
 
@@ -71,6 +46,7 @@ export default function ProjectsCard(props: { data?: any; loading?: boolean }) {
           </tbody>
         </table>
       </div>
+      {props.loading ? <div className="mt-2 text-right text-[10px] font-medium text-[#6f8294]">Refreshing...</div> : null}
     </section>
   );
 }

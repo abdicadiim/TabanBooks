@@ -803,7 +803,7 @@ export default function Sidebar() {
           <div className={`font-semibold ${isLightAppearance ? "text-slate-700" : "text-white/85"}`}>Version 1.0.0</div>
           <div className="mt-1 flex items-center gap-1.5">
             <Copyright size={12} />
-            <span>Taban Books</span>
+            <span>Taban Enterprice</span>
           </div>
         </div>
       </aside>

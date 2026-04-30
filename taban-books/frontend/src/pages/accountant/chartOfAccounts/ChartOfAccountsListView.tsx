@@ -734,67 +734,7 @@ export function ChartOfAccountsListView(props: ChartOfAccountsListViewProps) {
             )}
           </tbody>
         </table>
-              ) : (
-                displayAccounts.map((account, index) => {
-                  const accountId = String(account.id || account._id || account.accountName);
-                  return (
-                    <tr key={accountId || index} onClick={() => onSelectAccount(account)} style={{ borderBottom: "1px solid #f1f5f9", backgroundColor: index % 2 === 0 ? "#ffffff" : "#f8fafc", cursor: "pointer" }}>
-                      <td style={{ padding: "16px 18px" }} onClick={(event) => event.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedAccountIds.includes(accountId)}
-                          onChange={() =>
-                            setSelectedAccountIds((current) =>
-                              current.includes(accountId)
-                                ? current.filter((selectedId) => selectedId !== accountId)
-                                : [...current, accountId],
-                            )
-                          }
-                        />
-                      </td>
-                      <td style={{ padding: "16px 18px", fontSize: "14px", fontWeight: 600, color: "#0f172a" }}>{account.name}</td>
-                      <td style={{ padding: "16px 18px", fontSize: "14px", color: "#156372" }}>{account.code || "-"}</td>
-                      <td style={{ padding: "16px 18px", fontSize: "14px", color: "#156372" }}>{account.type}</td>
-                      <td style={{ padding: "16px 18px", fontSize: "14px", color: "#156372" }}>{account.parent || "-"}</td>
-                      <td style={{ padding: "16px 18px", textAlign: "right" }} onClick={(event) => event.stopPropagation()}>
-                        <button type="button" onClick={() => onSelectAccount(account)} style={{ ...buttonStyle, padding: "8px 10px", fontSize: "12px", marginRight: "8px" }}>View</button>
-                        <button type="button" onClick={() => onEditAccount(account)} style={{ ...buttonStyle, padding: "8px 10px", fontSize: "12px", marginRight: "8px" }}>Edit</button>
-                        <button type="button" onClick={() => onDeleteAccount(account)} style={{ ...buttonStyle, padding: "8px 10px", fontSize: "12px", borderColor: "#fecaca", color: "#dc2626" }}>Delete</button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
         </div>
-
-        {!isLoading && (
-          <div style={{ padding: "16px 18px", borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", backgroundColor: "#f8fafc" }}>
-            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
-              <span style={{ fontSize: "14px", color: "#64748b" }}>
-                Showing {startRecord} to {endRecord} of {totalRecords} accounts
-              </span>
-              <select value={itemsPerPage} onChange={(event) => { setItemsPerPage(Number(event.target.value)); setCurrentPage(1); }} style={buttonStyle}>
-                <option value={10}>10 per page</option>
-                <option value={25}>25 per page</option>
-                <option value={50}>50 per page</option>
-                <option value={100}>100 per page</option>
-              </select>
-            </div>
-
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-              <button type="button" onClick={() => setCurrentPage(1)} disabled={currentPage === 1} style={buttonStyle}>First</button>
-              <button type="button" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1} style={buttonStyle}>Previous</button>
-              <span style={{ alignSelf: "center", fontSize: "13px", color: "#156372" }}>
-                Page {currentPage} of {Math.max(totalPages, 1)}
-              </span>
-              <button type="button" onClick={() => setCurrentPage((page) => Math.min(Math.max(totalPages, 1), page + 1))} disabled={currentPage >= totalPages} style={buttonStyle}>Next</button>
-              <button type="button" onClick={() => setCurrentPage(Math.max(totalPages, 1))} disabled={currentPage >= totalPages} style={buttonStyle}>Last</button>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* Pagination Footer */}
       {!isLoading && (

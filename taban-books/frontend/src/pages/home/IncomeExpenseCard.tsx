@@ -78,39 +78,30 @@ export default function IncomeExpenseCard({
       </header>
 
       <div className="rounded-xl border border-[#d7e7ea] p-3 relative">
-        {loading ? (
-          <div className="animate-pulse">
-            <div className="h-[180px] rounded bg-[#f4f8fb]" />
-            <div className="mt-3 flex items-center justify-center gap-6">
-              <div className="h-3 w-16 rounded bg-[#edf5f6]" />
-              <div className="h-3 w-16 rounded bg-[#edf5f6]" />
+        <div className="h-[180px] flex items-end gap-3">
+          {breakdown.length ? (
+            breakdown.map((m) => {
+              const incomeHeight = Math.max(6, (m.income / maxValue) * 130);
+              const expenseHeight = Math.max(6, (m.expenses / maxValue) * 130);
+              return (
+                <div key={m.name} className="flex-1 flex items-end justify-center gap-2">
+                  <div className="w-2.5 rounded-sm bg-[#156372]" style={{ height: `${incomeHeight}px` }} />
+                  <div className="w-2.5 rounded-sm bg-[#f1b5b5]" style={{ height: `${expenseHeight}px` }} />
+                </div>
+              );
+            })
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-[12px] text-slate-500">
+              {loading ? "Loading performance data..." : "No income/expense data"}
             </div>
-          </div>
-        ) : (
-          <div className="h-[180px] flex items-end gap-3">
-            {breakdown.length ? (
-              breakdown.map((m) => {
-                const incomeHeight = Math.max(6, (m.income / maxValue) * 130);
-                const expenseHeight = Math.max(6, (m.expenses / maxValue) * 130);
-                return (
-                  <div key={m.name} className="flex-1 flex items-end justify-center gap-2">
-                    <div className="w-2.5 rounded-sm bg-[#156372]" style={{ height: `${incomeHeight}px` }} />
-                    <div className="w-2.5 rounded-sm bg-[#f1b5b5]" style={{ height: `${expenseHeight}px` }} />
-                  </div>
-                );
-              })
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-[12px] text-slate-500">No income/expense data</div>
-            )}
-          </div>
-        )}
+          )}
+        </div>
 
-        {!loading && (
-          <div className="mt-3 flex items-center justify-center gap-6 text-[11px]">
-            <div className="inline-flex items-center gap-1.5 text-[#537178]"><span className="w-2 h-2 rounded-full bg-[#156372]" />Income</div>
-            <div className="inline-flex items-center gap-1.5 text-[#537178]"><span className="w-2 h-2 rounded-full bg-[#f1b5b5]" />Expense</div>
-          </div>
-        )}
+        <div className="mt-3 flex items-center justify-center gap-6 text-[11px]">
+          <div className="inline-flex items-center gap-1.5 text-[#537178]"><span className="w-2 h-2 rounded-full bg-[#156372]" />Income</div>
+          <div className="inline-flex items-center gap-1.5 text-[#537178]"><span className="w-2 h-2 rounded-full bg-[#f1b5b5]" />Expense</div>
+          {loading ? <div className="text-[#6b7f91]">Refreshing...</div> : null}
+        </div>
       </div>
     </section>
   );
